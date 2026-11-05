@@ -1,0 +1,30 @@
+# Direct Cloudflare deployment + Bunny Storage. Copy to .dev.vars.cloudflare.
+# The copied file is private and ignored by Git. Never paste credentials into chat.
+
+PHOTO_STORAGE_PROVIDER=bunny
+BUNNY_STORAGE_ZONE=aviation-arcade-website
+BUNNY_STORAGE_REGION=de
+BUNNY_STORAGE_ENDPOINT=https://de-s3.storage.bunnycdn.com
+
+# Bunny Access tab: use the read-write Storage Zone Password (S3 Secret Access Key).
+# The S3 Access Key ID is the zone name above. Do not use your Bunny account API key.
+BUNNY_STORAGE_PASSWORD=
+
+# Where staff and photographer roles come from. Until the game backend is hosted where this
+# deployment can reach it, leave ROLES_SOURCE=mock and list verified emails below (they are uploaded
+# as secrets). The Users section and photographer requests are hidden while roles are mocked.
+# Switch to ROLES_SOURCE=backend and set GAME_API_BASE_URL once the backend is hosted; the mock lists
+# are then ignored.
+ROLES_SOURCE=mock
+MOCK_ADMIN_EMAILS=
+MOCK_PHOTOGRAPHER_EMAILS=
+GAME_API_BASE_URL=
+
+# Production Firebase Web SDK settings. The preparation script can also read these
+# from the existing ignored outputs/firebase-web-config.json provisioning output.
+FIREBASE_PROJECT_ID=airplane-games-auth-20261022
+FIREBASE_AUTH_DOMAIN=airplane-games-auth-20261022.firebaseapp.com
+FIREBASE_WEB_API_KEY=
+FIREBASE_APP_ID=1:657564884414:web:0aa58e8e36a6aa83f2adef
+
+# Do not add FIREBASE_AUTH_EMULATOR_HOST to this deployment file.
