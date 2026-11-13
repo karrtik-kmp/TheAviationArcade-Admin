@@ -8,7 +8,8 @@ with README.md (what was split and which modules are copies) and docs/TASKS.md, 
 - Install: `npm run install:ci`
 - Local auth: `npm run auth:emulator` (demo project, port 9099), then `npm run demo:seed`
 - Admin: `npm run dev`, open `/admin/sign-in`
-- Checks: `npm run typecheck`, `npm test`, `npm run build`
+- Checks: `npm run typecheck`, `npm test`, `npm run build`, `npm run build:node`
+- Hosted start: `node --env-file=envVar/.env dist-node/server.mjs` (README "Hosting")
 
 ## Durable boundaries
 
@@ -24,7 +25,10 @@ with README.md (what was split and which modules are copies) and docs/TASKS.md, 
 - Keep session-generation guards, the account-change fence and draft base versions. Never retry a
   failed write under a different account or overwrite another editor's version.
 - Publishing needs approval and usage offers; demo content is nonpublishable. Demo admin is view-only.
-- App paths are unprefixed (`/admin`); use `SiteLink`, `sitePath`, `navigateTo`.
+- App paths are unprefixed (`/admin`); use `SiteLink`, `sitePath`, `navigateTo`. Links to the public
+  website use `PUBLIC_SITE_URL` (`lib/website-url.ts`), never paths on the admin host.
+- The Admin runs as a Node server, not Cloudflare Workers. Server settings come from the process
+  environment through `lib/settings.ts` only (`web.env.example`). There is no D1: its routes answer 503.
 - The website repo has copies of the common modules (README.md lists them). A fix to auth, session,
   roles or the router goes to both repos. D1 schema changes go to both.
 - Use only client-supplied content; don't invent questions, answers, awards or thresholds.

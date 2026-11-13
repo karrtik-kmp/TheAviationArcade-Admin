@@ -34,18 +34,21 @@ router) must be made in the other as well until they're shared properly:
 - Content and data: `lib/catalog.ts`, `lib/rules.ts`, `lib/types.ts`, `lib/military.ts`,
   `lib/editorial/*`, `lib/submissions/*`, `lib/d1/*`, `lib/bunny-storage.ts`, `lib/photo-storage.ts`,
   `lib/media-form.ts`, `lib/request/media*.ts`, `db/`, `drizzle/`, `contracts/`
-- Platform: `lib/paths.ts`, `components/SiteLink.tsx`, `components/Providers.tsx`, `lib/connector*`,
-  `lib/demo-*`, `worker/`, build/test `scripts/`, styles and fonts
+- Platform: `lib/paths.ts`, `lib/settings.ts`, `components/SiteLink.tsx`, `components/Providers.tsx`,
+  `lib/demo-*`, `proxy.ts`, `scripts/node-server.mjs`, build/test `scripts/`, styles and fonts
 
 Admin-only changes made to the copies: `accountSignInPath` always goes to `/admin/sign-in`, the
-account menu and access gates drop the public `/account`, `/contribute` and `/play` links, sign-out
-lands on `/admin/sign-in`, and "Back to the website" points at the matching public host
-(`lib/website-url.ts`) or is hidden locally.
+access gates drop the public `/account`, `/contribute` and `/play` links, sign-out lands on
+`/admin/sign-in`. The account menu's "My account" and "Contribute" and the sign-in page's "Back to the
+website" link to the public website (`PUBLIC_SITE_URL`, else derived from the admin host, else hidden;
+`lib/website-url.ts`). Unlike the website, the Admin has no `SITE_SURFACE` switch (`lib/surface.ts`): its
+pages and API routes are admin-only already; `proxy.ts` only sets the security headers.
 
 ### Shared state
 
-Both apps read and write the **same** data: the D1 database (content, submissions, audit), the
-Bunny photo zone and the game backend. Schema changes go to both repos.
+Both apps read and write the **same** data: the Bunny photo zone and the game backend. The Node build
+has no D1: the desks that still read or write it (submissions, content, military, audit) answer 503
+until they move to the backend (server hosting A3).
 
 ## Commands
 
@@ -56,14 +59,23 @@ Use Node.js 24 (minimum 22.13).
 - Auth emulator (terminal 1, port 9099): `npm run auth:emulator`; then `npm run demo:seed`
 - Dev server (terminal 2): `npm run dev`, then open `/admin/sign-in`. It uses the same port as the
   website's dev server, so run one at a time.
-- Checks: `npm run typecheck`, `npm test`, `npm run build`
+- Checks: `npm run typecheck`, `npm test`, `npm run build`, `npm run build:node`
 
-There is no `deploy` script. The Admin is meant to run on our Hostinger server
-(`docs/briefs/website-admin-hosting.md` and `server/` in the design-docs folder). It still builds
-for Cloudflare Workers until the Node build exists. `config/cloudflare-prototype.json` names its
-Worker `aviation-arcade-admin`, so a manual Worker deploy can never replace the website's Worker.
-`npm run build` ends with the Cloudflare packaging step, which needs the Firebase settings in
-`.dev.vars`.
+## Hosting
+
+The Admin runs as a Node process on our Hostinger server (`docs/briefs/website-admin-hosting.md` and
+`server/` in the design-docs folder): `admin.playairplanegames.com` on port 3200, `dev.admin.` on 3201.
+There is no `deploy` script and no Cloudflare Worker any more.
+
+- Build: `npm ci`, then `npm run build:node` (writes `dist/` and `dist-node/server.mjs`).
+- Start, from the checkout: `node --env-file=envVar/.env dist-node/server.mjs`. Settings come from the
+  process environment only (`lib/settings.ts`); `web.env.example` lists every key.
+- The server refuses to start on a bad `PORT`, a `SITE_SURFACE` other than `admin` (optional), a
+  `FIREBASE_AUTH_EMULATOR_HOST`, or a `PUBLIC_SITE_URL` that is not an http(s) origin. It listens on
+  `HOST`/`PORT`, answers `GET /api/health` with 200 and no auth, trusts `X-Forwarded-Proto` from the one
+  nginx hop (`VINEXT_TRUST_PROXY=1`; `X-Forwarded-Host` stays untrusted) and exits within 15 s on SIGTERM.
+- `npm start` runs the built server locally with `.dev.vars`; a production build refuses the demo
+  project and the emulator, so walk sign-in on `npm run dev` instead.
 
 ## Rules
 
