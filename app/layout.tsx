@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { sitePath } from "@/lib/paths";
+import { setting } from "@/lib/settings";
+import { publicWebsiteUrl } from "@/lib/website-url";
 
 export const metadata: Metadata = {
   title: {
@@ -16,11 +19,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read per request (headers()), so the hosted value of PUBLIC_SITE_URL applies, not the build-time one.
+  const publicSite = publicWebsiteUrl((await headers()).get("host"), setting("PUBLIC_SITE_URL"));
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -40,7 +45,7 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers publicSite={publicSite}>{children}</Providers>
       </body>
     </html>
   );

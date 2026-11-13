@@ -7,6 +7,7 @@ import {
   type Audience,
 } from "@/lib/account";
 import { publicWebsiteUrl } from "@/lib/website-url";
+import { setting } from "@/lib/settings";
 import { redirectIfSignedIn } from "@/lib/access";
 import "@/components/account.css";
 import "@/components/admin-sign-in.css";
@@ -33,7 +34,7 @@ export async function AdminSignInRoute({
 }) {
   const returnTo = landing("admin", first((await searchParams).return_to));
   await redirectIfSignedIn("admin", returnTo);
-  const website = publicWebsiteUrl((await headers()).get("host"));
+  const website = publicWebsiteUrl((await headers()).get("host"), setting("PUBLIC_SITE_URL"));
   return (
     <div className="admin-signin">
       <aside className="admin-signin-panel">

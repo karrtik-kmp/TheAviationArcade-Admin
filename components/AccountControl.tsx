@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import {
   ArrowClockwise,
+  IdentificationCard,
   UserCircle,
   SignOut,
 } from "@phosphor-icons/react";
@@ -18,10 +19,13 @@ import {
   useAccountSession,
 } from "@/components/AccountSession";
 import { SiteLink } from "@/components/SiteLink";
+import { usePublicSite } from "@/components/PublicSite";
+import { publicWebsitePage } from "@/lib/website-url";
 
 export function AccountControl() {
   const pathname = usePathname() || "/";
   const { state, account, refresh } = useAccountSession();
+  const publicSite = usePublicSite();
   const [open, setOpen] = useState(false);
   const [returnTo, setReturnTo] = useState(safeAccountReturn(pathname));
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -121,6 +125,17 @@ export function AccountControl() {
             <span className="eyebrow">Signed in as</span>
             <strong>{account.user.displayName}</strong>
           </div>
+          {publicSite && (
+            <>
+              {/* Account and Contribute live on the public website, not on the admin host. */}
+              <a href={publicWebsitePage(publicSite, "account")} onClick={() => close()}>
+                <IdentificationCard size={18} /> My account
+              </a>
+              <a href={publicWebsitePage(publicSite, "contribute")} onClick={() => close()}>
+                Contribute
+              </a>
+            </>
+          )}
           {account.isStaff && (
             <SiteLink href={audiences.admin.home} onClick={() => close()}>
               Editorial workspace
