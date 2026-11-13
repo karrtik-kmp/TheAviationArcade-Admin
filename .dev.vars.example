@@ -15,6 +15,9 @@ MOCK_PHOTOGRAPHER_EMAILS=
 # Uncomment with ROLES_SOURCE=backend and a running Backend; unset, the player page says "Not connected".
 # GAME_API_BASE_URL=http://127.0.0.1:3000
 
-# Local development uses emulated R2 unless you explicitly opt into live Bunny.
-# For the separate Cloudflare/Bunny deployment, copy .dev.vars.cloudflare.example
-# to .dev.vars.cloudflare. Never copy these emulator settings into that file.
+# The public website for "My account" and "Contribute" in the account menu. Unset locally: the links are hidden.
+# PUBLIC_SITE_URL=http://127.0.0.1:5174
+
+# There is no local photo store: photo routes answer 503 unless you opt into live Bunny
+# (PHOTO_STORAGE_PROVIDER=bunny and the BUNNY_STORAGE_* keys in web.env.example).
+# The hosted server uses web.env.example, never these emulator settings.
