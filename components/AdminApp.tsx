@@ -32,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AccountControl } from "@/components/AccountControl";
 import { useAccountSession } from "@/components/AccountSession";
+import { useDevDemoWaiver } from "@/components/PublicSite";
 import { Brand, ThemeToggle } from "@/components/AdminShell";
 import { AccountActions } from "@/components/AccessGate";
 import { MilitaryWorkspace } from "@/components/MilitaryWorkspace";
@@ -65,6 +66,7 @@ import type {
   MilitaryStage,
   ReleasePointer,
 } from "@/lib/military";
+import { WAIVED_SOURCE_TEXT, factualSourceText } from "@/lib/dev-waiver";
 import { sitePath } from "@/lib/paths";
 import { rankNames } from "@/lib/catalog";
 import { createDraftSession, type Outcome } from "@/lib/editorial/draft-session";
@@ -166,6 +168,8 @@ export function AdminApp({
 }) {
   const accountSession = useAccountSession();
   const accountRef = useRef(accountSession);
+  // Dev Admin only: a Plane of the Day item may go live with no factual source (lib/dev-waiver.ts).
+  const devDemoWaiver = useDevDemoWaiver();
   accountRef.current = accountSession;
   const [blockedAccess, setBlockedAccess] = useState<number | null>(null);
   const blockedAccessRef = useRef<number | null>(null);
@@ -549,7 +553,7 @@ export function AdminApp({
   async function saveRecord(status: EditorialRecord["status"]) {
     if (!selectedRecord || !recordData) return;
     if (status === "scheduled" || status === "published") {
-      const errors = editorialErrors(selectedRecord.kind, recordData);
+      const errors = editorialErrors(selectedRecord.kind, recordData, { devDemoWaiver });
       if (errors.length) {
         setNotice({ kind: "error", text: errors.join(" ") });
         return;
@@ -1825,6 +1829,10 @@ function ContentWorkspace({
                   onChange={(value) => setField("factualSource", value)}
                   full
                 />
+                {kind === "potd" &&
+                  selected &&
+                  factualSourceText({ status: selected.status, factualSource: selected.data.factualSource }) ===
+                    WAIVED_SOURCE_TEXT && <p className="admin-field full">{WAIVED_SOURCE_TEXT}</p>}
                 {kind === "potd" ? (
                   <label className="admin-field full">
                     <span>Photo context</span>

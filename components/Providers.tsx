@@ -1,18 +1,22 @@
 "use client";
 import { ThemeProvider } from "next-themes";
 import { AccountSessionProvider } from "@/components/AccountSession";
-import { PublicSiteProvider } from "@/components/PublicSite";
+import { DevDemoWaiverProvider, PublicSiteProvider } from "@/components/PublicSite";
 export function Providers({
   children,
   publicSite = null,
+  devDemoWaiver = false,
 }: {
   children: React.ReactNode;
   publicSite?: string | null;
+  devDemoWaiver?: boolean;
 }) {
   return (
     <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem>
       <PublicSiteProvider value={publicSite}>
-        <AccountSessionProvider>{children}</AccountSessionProvider>
+        <DevDemoWaiverProvider value={devDemoWaiver}>
+          <AccountSessionProvider>{children}</AccountSessionProvider>
+        </DevDemoWaiverProvider>
       </PublicSiteProvider>
     </ThemeProvider>
   );

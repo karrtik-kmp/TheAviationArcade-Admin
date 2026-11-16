@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { sitePath } from "@/lib/paths";
 import { setting } from "@/lib/settings";
+import { devDemoWaiverOn } from "@/lib/dev-waiver";
 import { publicWebsiteUrl } from "@/lib/website-url";
 
 export const metadata: Metadata = {
@@ -25,7 +26,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   // Read per request (headers()), so the hosted value of PUBLIC_SITE_URL applies, not the build-time one.
-  const publicSite = publicWebsiteUrl((await headers()).get("host"), setting("PUBLIC_SITE_URL"));
+  const host = (await headers()).get("host");
+  const publicSite = publicWebsiteUrl(host, setting("PUBLIC_SITE_URL"));
+  // Dev demo waiver: relaxes two browser pre-checks only, and only on a dev or local host (lib/dev-waiver.ts).
+  const devDemoWaiver = devDemoWaiverOn(host, setting("DEV_DEMO_WAIVER"));
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -45,7 +49,7 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        <Providers publicSite={publicSite}>{children}</Providers>
+        <Providers publicSite={publicSite} devDemoWaiver={devDemoWaiver}>{children}</Providers>
       </body>
     </html>
   );

@@ -27,6 +27,7 @@ export const SETTING_KEYS = [
   "MOCK_ADMIN_EMAILS",
   "MOCK_PHOTOGRAPHER_EMAILS",
   "PUBLIC_SITE_URL",
+  "DEV_DEMO_WAIVER",
 ] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 

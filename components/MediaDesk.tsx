@@ -4,7 +4,9 @@ import { Button, Checkbox, Input, MessageBar, MessageBarBody, Textarea } from "@
 import { ArrowClockwise, ArrowLeft, Images } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, RefObject } from "react";
+import { useDevDemoWaiver } from "@/components/PublicSite";
 import { accountHeaders } from "@/lib/account";
+import { licenceNameText } from "@/lib/dev-waiver";
 import {
   DESCRIPTION_MAX,
   descriptionErrors,
@@ -177,6 +179,8 @@ function DeskDetail({
   onChanged: (item: MediaItem) => void;
 }) {
   const mounted = useMounted();
+  // Dev Admin only: a missing licence name no longer blocks publishing here (lib/dev-waiver.ts).
+  const devDemoWaiver = useDevDemoWaiver();
   const uid = useId().replace(/:/g, "");
   const [detail, setDetail] = useState<MediaDetail | null>(null);
   const [load, setLoad] = useState<"loading" | "ready" | "error">("loading");
@@ -316,7 +320,7 @@ function DeskDetail({
     if (!item || busy) return;
     // Re-check at the moment of confirming: the saved licence must still allow it and nothing may be unsaved.
     if (action === "publish") {
-      const stopped = publishBlockers(item.draft.licence, rightsOf(item.draft));
+      const stopped = publishBlockers(item.draft.licence, rightsOf(item.draft), { devDemoWaiver });
       const unsaved = "changes" in licenceDiff(baseOf(item.draft), values, true);
       if (unsaved || stopped.length > 0) {
         setConfirm(null);
@@ -402,7 +406,7 @@ function DeskDetail({
 
   const preview = detail.preview;
   const rights = rightsOf(item.draft);
-  const blockers = publishBlockers(base, rights);
+  const blockers = publishBlockers(base, rights, { devDemoWaiver });
   const dirty = "changes" in licenceDiff(base, values, true);
   const canPublish = item.draftVersion !== item.publishedVersion;
   const publishBlocked = dirty || blockers.length > 0;
@@ -576,7 +580,7 @@ function DeskDetail({
                     {version.width}×{version.height} · {fmtBytes(version.byteSize)} · {version.contentType === "image/png" ? "PNG" : "JPEG"}
                   </td>
                   <td data-label="Licence">
-                    {version.licence.licenceName ?? "No licence name"}
+                    {licenceNameText(version) ?? "No licence name"}
                     <small>{version.licence.credit ? `Credit: ${version.licence.credit}` : version.licence.creditRequired ? "Credit needed" : "No credit required"}</small>
                   </td>
                   <td data-label="Checksum">
@@ -666,7 +670,14 @@ function DeskDetail({
                   <b>
                     Publish version {item.draftVersion} of {item.id}?
                   </b>{" "}
-                  Its licence (&apos;{base.licenceName}&apos;) and {frozenCredit} are frozen with this version. Nothing
+                  {base.licenceName ? (
+                    <>
+                      Its licence (&apos;{base.licenceName}&apos;) and {frozenCredit} are frozen with this version.
+                    </>
+                  ) : (
+                    <>It has no licence, so it is published without one (dev demo); {frozenCredit} is frozen with this version.</>
+                  )}{" "}
+                  Nothing
                   appears in a game until the image is linked to content, which isn&apos;t done here.
                   {!hasLink && " This image can't be previewed on this server, so you haven't seen it."}
                 </>
@@ -703,6 +714,8 @@ export function MediaDesk({
   onBlocked: (status: number) => void;
 }) {
   const mounted = useMounted();
+  // Dev Admin only: a missing licence name no longer blocks publishing here (lib/dev-waiver.ts).
+  const devDemoWaiver = useDevDemoWaiver();
   const [view, setView] = useState<ViewKey>("unverified");
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -871,7 +884,7 @@ export function MediaDesk({
                     </td>
                     <td data-label="State">{stateText[item.state]}</td>
                     <td data-label="Draft file">{fileSummary(item.draft)}</td>
-                    <td data-label="Licence">{item.draft.licence.licenceName ?? "Licence needed"}</td>
+                    <td data-label="Licence">{licenceNameText(item.draft) ?? (devDemoWaiver ? "No licence name (dev demo)" : "Licence needed")}</td>
                     <td data-label="Uploaded by">{accountOf(item.owner)}</td>
                     <td data-label="Updated">{when(item.updatedAt, mounted)}</td>
                   </tr>

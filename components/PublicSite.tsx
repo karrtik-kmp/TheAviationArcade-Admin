@@ -15,3 +15,17 @@ export function PublicSiteProvider({ value, children }: { value: string | null; 
 export function usePublicSite(): string | null {
   return useContext(PublicSiteContext);
 }
+
+/**
+ * Whether the dev demo waiver relaxes the browser pre-checks on this page (lib/dev-waiver.ts). Set by the root
+ * layout; false on any host other than dev.admin.<domain> or loopback. It authorizes nothing: the backend decides.
+ */
+const DevDemoWaiverContext = createContext(false);
+
+export function DevDemoWaiverProvider({ value, children }: { value: boolean; children: ReactNode }) {
+  return <DevDemoWaiverContext.Provider value={value}>{children}</DevDemoWaiverContext.Provider>;
+}
+
+export function useDevDemoWaiver(): boolean {
+  return useContext(DevDemoWaiverContext);
+}

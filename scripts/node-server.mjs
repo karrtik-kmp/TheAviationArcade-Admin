@@ -21,7 +21,28 @@ export function startupProblems(env) {
   if (env.FIREBASE_AUTH_EMULATOR_HOST) problems.push("FIREBASE_AUTH_EMULATOR_HOST is local only; unset it.");
   if (env.PUBLIC_SITE_URL && !validSiteUrl(env.PUBLIC_SITE_URL))
     problems.push("PUBLIC_SITE_URL must be an http(s) origin such as https://playairplanegames.com.");
+  const waiver = devDemoWaiverProblem(env.DEV_DEMO_WAIVER, env.SITE_URL);
+  if (waiver) problems.push(waiver);
   return problems;
+}
+
+/**
+ * The dev demo waiver is dev only (ruling 2026-11-16): exactly `dev-demo`, and only with SITE_URL on a dev.admin.
+ * host. Kept in step with lib/dev-waiver.ts `devDemoWaiverProblem` (this file runs without the app's TypeScript;
+ * tests/dev-waiver.test.mjs checks both agree).
+ */
+export function devDemoWaiverProblem(configured, siteUrl) {
+  if (configured === undefined || configured === "") return null;
+  if (configured !== "dev-demo") return "DEV_DEMO_WAIVER must be dev-demo or unset.";
+  let host = "";
+  try {
+    host = siteUrl ? new URL(siteUrl).hostname : "";
+  } catch {
+    host = "";
+  }
+  if (!/^dev\.admin\./.test(host))
+    return "DEV_DEMO_WAIVER is for the dev Admin only: SITE_URL must be its https://dev.admin.<domain> origin.";
+  return null;
 }
 
 function validSiteUrl(value) {

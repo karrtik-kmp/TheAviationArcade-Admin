@@ -164,11 +164,15 @@ export function reviewError(
 export function editorialErrors(
   kind: "identifier" | "potd",
   data: EditorialData,
+  waiver: { devDemoWaiver?: boolean } = {},
 ): string[] {
   const errors: string[] = [];
   if (data.title.trim().length < 3) errors.push("Add a descriptive title.");
   if (!data.credit.trim()) errors.push("Add a photographer credit.");
-  if (!/^https:\/\//.test(data.factualSource))
+  // The dev demo waiver (lib/dev-waiver.ts, dev Admin only) allows a Plane of the Day item with NO source;
+  // a source that is given must still be https. The backend still decides.
+  const sourceWaived = waiver.devDemoWaiver === true && kind === "potd" && data.factualSource.trim() === "";
+  if (!sourceWaived && !/^https:\/\//.test(data.factualSource))
     errors.push("Add an https factual source.");
   if (kind === "identifier") {
     const options = [data.correctAnswer, ...data.distractors].map((s) =>

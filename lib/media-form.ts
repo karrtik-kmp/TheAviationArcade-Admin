@@ -271,11 +271,16 @@ export type PublishBlocker = { field: "licenceName" | "credit" | "rights"; messa
 /**
  * What stops a SAVED draft from being published (the backend's 422 `content_invalid` rule): a licence
  * name, a credit when required, and a v1 rights statement. Pass the draft's `rights` (null when none);
- * leave it out to check the licence only.
+ * leave it out to check the licence only. With `devDemoWaiver` (dev Admin only) a missing licence name is allowed.
  */
-export function publishBlockers(saved: MediaLicence, rights?: RightsState): PublishBlocker[] {
+export function publishBlockers(
+  saved: MediaLicence,
+  rights?: RightsState,
+  options: { devDemoWaiver?: boolean } = {},
+): PublishBlocker[] {
   const blockers: PublishBlocker[] = [];
-  if (!saved.licenceName?.trim()) blockers.push({ field: "licenceName", message: "Add a licence name." });
+  // The dev demo waiver (lib/dev-waiver.ts) drops only the licence-name check; the backend still decides.
+  if (!options.devDemoWaiver && !saved.licenceName?.trim()) blockers.push({ field: "licenceName", message: "Add a licence name." });
   if (saved.creditRequired && !saved.credit?.trim()) blockers.push({ field: "credit", message: "Add a credit, which this photo requires." });
   if (rights !== undefined && !hasV1Statement(rights))
     blockers.push({ field: "rights", message: "No rights statement. The photographer who owns this photo needs to state their rights." });
