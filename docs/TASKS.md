@@ -46,11 +46,36 @@
     links: My account → `http://127.0.0.1:5174/account`, Contribute → `…/contribute`, Sign out →
     `/sign-out` which lands on `/admin/sign-in`. Browser QA suites were not run. Nothing deployed.
 
+- 2026-11-16: Firebase project, contract 0.27.1, dev demo waiver (website brief
+  `docs/briefs/admin-firebase-project-and-demo.md`, rulings in website `docs/intent/hosting-dev-demo.md`).
+  - Firebase: `airplane-games-9fe1e` replaces the retired `airplane-games-auth-20261022` in `AGENTS.md`, `.firebaserc`,
+    `web.env.example`, `docs/FIREBASE_SETUP.md` (including the provisioner commands) and `docs/BACKEND_SYNC_PLAN.md`.
+    `firebase.json` `authorizedDomains` are `localhost`, `127.0.0.1`, `dev.playairplanegames.com`,
+    `dev.admin.playairplanegames.com`, identical to the website's (compared). The D1 export keeps the old project
+    (`scripts/media-export/bundle.mjs` `REMOTE_PROJECT`, its test, `MEDIA_PLAN.md` line 219); Cloudflare-era docs are history.
+  - Contract: `contracts/openapi.yaml` is Backend API 0.27.1 (`6e3512a`), same blob hash. No parser changes were needed.
+    `.gitattributes` now pins it to LF: a CRLF checkout (Windows, `core.autocrlf=true`) failed 6 contract tests.
+  - Dev demo waiver (`lib/dev-waiver.ts`): `DEV_DEMO_WAIVER=dev-demo` on the dev Admin relaxes only the browser checks
+    for a missing licence name (`publishBlockers`) and an empty Plane of the Day source (`editorialErrors`). The server
+    refuses to start with any other value or unless `SITE_URL` is a `dev.admin.` origin. The layout ignores it on any
+    host other than `dev.admin.<domain>` or loopback. Labels are inferred from records: "Published without a licence
+    (dev demo)" for a published version with `licenceName: null` (Media desk versions and list) and "No source (dev
+    demo)" for a live Plane of the Day item with no source. The publish confirmation no longer quotes an empty licence name.
+  - A3 planned in `docs/A3_PLAN.md`.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 347/347 (new
+    `tests/dev-waiver.test.mjs`, 7 tests); `npm run build` and `npm run build:node` complete; eslint on the changed
+    files reports the same findings as before the change, none new. Not run in a browser; nothing deployed.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.26.0. Until then the workspace loads submissions,
-      content, audit and military (all D1) together, so it shows "Could not load the workspace" and the
-      backend-only Media, Store and Users desks are unreachable too. Degrade per desk or finish A3 first.
+- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md` (A3.0 per-desk loading first,
+      then Military, Identifier on `content/identifier`, Plane of the Day, audit, then removing D1). Until A3.0 the
+      workspace loads submissions, content, audit and military (all D1) together, so it shows "Could not load the
+      workspace" and the backend-only Media, Store and Users desks are unreachable too.
+- [ ] Open question for A3.1 (Backend/user): Military `rights_checked` needs a permission note and attribution, and
+      `content_prepared` an https `referenceUrl`. Josh's sheet has no reference URL and the dev waiver doesn't cover it.
+- [ ] Set `DEV_DEMO_WAIVER=dev-demo` and `SITE_URL=https://dev.admin.playairplanegames.com` in the dev Admin's env
+      file at deploy (user / `server/`), never on the prod Admin.
 - [ ] An unverified email signing in is sent to `/account?verify_email=1` (`afterSignIn` in
       `lib/account.ts`), which 404s on the admin host. Send it to the public site or show a notice here.
 - [ ] Real SIGTERM on Linux and the hosted start (`dev.admin.`) once `server/` has the Admin repo.
