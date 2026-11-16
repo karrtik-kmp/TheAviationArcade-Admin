@@ -15,7 +15,8 @@ with README.md (what was split and which modules are copies) and docs/TASKS.md, 
 
 - Product authentication is Firebase email/password and Google only. Hosting gates and headers
   never authorize product actions.
-- Cloud project is `airplane-games-auth-20261022`; local tests use `demo-airplane-games` only.
+- Cloud project is `airplane-games-9fe1e` (ruling 2026-11-16; `airplane-games-auth-20261022` is retired and
+  its accounts don't carry over). Local tests use `demo-airplane-games` only.
   Never commit `.dev.vars*`, tokens, service-account keys or Bunny passwords.
 - Server principal = Firebase project + UID. Never reassign content ownership by matching contact
   email, photo credit or display name.
