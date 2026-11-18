@@ -791,9 +791,18 @@
 }
 .admin-load-error {
   padding: 28px;
+  margin-bottom: 20px;
 }
 .admin-load-error p {
   overflow-wrap: anywhere;
+}
+.admin-desk-errors {
+  margin: 12px 0 18px;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+.admin-desk-errors li + li {
+  margin-top: 6px;
 }
 .admin-loading .skeleton {
   min-height: 120px;

@@ -70,6 +70,17 @@ import { WAIVED_SOURCE_TEXT, factualSourceText } from "@/lib/dev-waiver";
 import { sitePath } from "@/lib/paths";
 import { rankNames } from "@/lib/catalog";
 import { createDraftSession, type Outcome } from "@/lib/editorial/draft-session";
+import {
+  allSources,
+  blockingStatus,
+  sectionView,
+  sourceStates,
+  sourceUrl,
+  workspaceSources,
+  type SourceResult,
+  type SourceStates,
+  type WorkspaceSource,
+} from "@/lib/workspace-load";
 
 type AdminUser = { sessionKey: string };
 type Section =
@@ -88,7 +99,6 @@ type AuditEvent = {
   detail: string;
   created_at: string;
 };
-type LoadState = "loading" | "ready" | "error";
 type Notice = { kind: "error" | "success"; text: string } | null;
 
 const navItems: { label: Section; icon: typeof SquaresFour }[] = [
@@ -132,22 +142,6 @@ function emptyChecks(): ReviewChecks {
 }
 const emptyPointer = { current: null, history: [], version: 0 };
 
-function responseError(body: unknown, fallback: string) {
-  return body &&
-    typeof body === "object" &&
-    "error" in body &&
-    typeof body.error === "string"
-    ? body.error
-    : fallback;
-}
-function responseCode(body: unknown) {
-  return body &&
-    typeof body === "object" &&
-    "code" in body &&
-    typeof body.code === "string"
-    ? body.code
-    : "";
-}
 function seedData(record: EditorialRecord): EditorialData {
   return { ...record.data, distractors: [...record.data.distractors] };
 }
@@ -224,8 +218,9 @@ export function AdminApp({
     emptyPointer,
   );
   const [events, setEvents] = useState<AuditEvent[]>([]);
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [loadError, setLoadError] = useState("");
+  const [sources, setSources] = useState<SourceStates>(() =>
+    allSources({ state: "loading" }),
+  );
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState("");
@@ -252,8 +247,7 @@ export function AdminApp({
     setRecordData(null);
     setChecks(emptyChecks());
     setReviewNote("");
-    setLoadError("");
-    setLoadState("loading");
+    setSources(allSources({ state: "loading" }));
     setBusy(false);
   }, [drafts]);
 
@@ -281,83 +275,65 @@ export function AdminApp({
     const requestGeneration = drafts.invalidate();
     if (readOnly) {
       setRecords(sampleEditorialRecords());
-      setLoadState("ready");
+      setSources(allSources({ state: "ready" }));
       return;
     }
-    setLoadState("loading");
-    setLoadError("");
-    try {
-      const headers = accountHeaders(user.sessionKey);
-      const [s, c, a, m] = await Promise.all([
-        fetch(sitePath("/api/admin/submissions"), { cache: "no-store", headers }),
-        fetch(sitePath("/api/admin/content"), { cache: "no-store", headers }),
-        fetch(sitePath("/api/admin/audit"), { cache: "no-store", headers }),
-        fetch(sitePath("/api/admin/military"), { cache: "no-store", headers }),
-      ]);
-      const results = await Promise.all(
-        [s, c, a, m].map(async (response) => ({
-          response,
-          body: await response.json().catch(() => ({})),
-        })),
-      );
-      const failed = results.find(({ response }) => !response.ok);
-      if (failed) {
-        const error = Object.assign(
-          new Error(
-            responseError(
-              failed.body,
-              "Could not load the editorial workspace.",
-            ),
-          ),
-          {
-            status: failed.response.status,
-            code: responseCode(failed.body),
-          },
-        );
-        throw error;
-      }
-      if (!drafts.isCurrent(requestGeneration)) return;
-      const [submissionBody, contentBody, auditBody, militaryBody] = results.map(
-        ({ body }) => body as Record<string, unknown>,
-      );
-      setSubmissions(
-        Array.isArray(submissionBody.submissions)
-          ? (submissionBody.submissions as Submission[])
-          : [],
-      );
-      setRecords(
-        Array.isArray(contentBody.records)
-          ? (contentBody.records as EditorialRecord[])
-          : [],
-      );
-      applyMilitary(militaryBody);
-      setEvents(
-        Array.isArray(auditBody.events)
-          ? (auditBody.events as AuditEvent[])
-          : [],
-      );
-      setLoadState("ready");
-    } catch (error) {
-      if (requestGeneration !== drafts.generation()) return;
-      const status =
-        typeof error === "object" && error && "status" in error
-          ? Number(error.status)
-          : 0;
-      const code =
-        typeof error === "object" && error && "code" in error
-          ? String(error.code)
-          : "";
-      if (status === 401 || status === 403 || code === "ACCOUNT_CHANGED") {
-        blockAccess(status || 409);
-        return;
-      }
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Could not load the editorial workspace.",
-      );
-      setLoadState("error");
+    setSources(allSources({ state: "loading" }));
+    // Each source loads on its own (A3.0): one that fails shows on its own desks, not the whole workspace.
+    const headers = accountHeaders(user.sessionKey);
+    const loaded = await Promise.all(
+      workspaceSources.map(async (source): Promise<[WorkspaceSource, SourceResult]> => {
+        try {
+          const response = await fetch(sitePath(sourceUrl[source]), {
+            cache: "no-store",
+            headers,
+          });
+          return [
+            source,
+            { status: response.status, body: await response.json().catch(() => ({})) },
+          ];
+        } catch (error) {
+          return [
+            source,
+            { status: 0, body: { error: error instanceof Error ? error.message : "" } },
+          ];
+        }
+      }),
+    );
+    if (requestGeneration !== drafts.generation()) return;
+    const results = Object.fromEntries(loaded) as Record<WorkspaceSource, SourceResult>;
+    // An account mismatch from any source blocks everything; no source's private data is applied.
+    const blocked = blockingStatus(results);
+    if (blocked !== null) {
+      blockAccess(blocked);
+      return;
     }
+    if (!drafts.isCurrent(requestGeneration)) return;
+    const states = sourceStates(results);
+    const body = (source: WorkspaceSource) =>
+      states[source].state === "ready"
+        ? ((results[source].body ?? {}) as Record<string, unknown>)
+        : {};
+    const submissionBody = body("submissions");
+    const contentBody = body("content");
+    const auditBody = body("audit");
+    setSubmissions(
+      Array.isArray(submissionBody.submissions)
+        ? (submissionBody.submissions as Submission[])
+        : [],
+    );
+    setRecords(
+      Array.isArray(contentBody.records)
+        ? (contentBody.records as EditorialRecord[])
+        : [],
+    );
+    applyMilitary(body("military"));
+    setEvents(
+      Array.isArray(auditBody.events)
+        ? (auditBody.events as AuditEvent[])
+        : [],
+    );
+    setSources(states);
   }, [blockAccess, drafts, readOnly, user.sessionKey]);
 
   const currentAccessRef = useRef(currentAccountMatches);
@@ -708,6 +684,7 @@ export function AdminApp({
     }
   }
 
+  const view = sectionView(section, sources);
   const contentKind = section === "Aircraft Identifier" ? "identifier" : "potd";
   const contentRecords = records.filter(
     (record) =>
@@ -888,17 +865,17 @@ export function AdminApp({
                   </button>
                 </div>
               )}
-              {loadState === "loading" && (
-                <div className="admin-loading" aria-label="Loading workspace">
+              {view.view === "loading" && (
+                <div className="admin-loading" aria-label={`Loading ${section}`}>
                   {[0, 1, 2].map((item) => (
                     <div className="skeleton" key={item} />
                   ))}
                 </div>
               )}
-              {loadState === "error" && (
-                <section className="admin-panel admin-load-error">
-                  <h2>Could not load the workspace</h2>
-                  <p className="error">{loadError}</p>
+              {view.view === "error" && (
+                <section className="admin-panel admin-load-error" role="alert">
+                  <h2>Could not load {section}</h2>
+                  <DeskErrors errors={view.errors} />
                   <Button
                     appearance="primary"
                     icon={<ArrowClockwise size={17} />}
@@ -908,8 +885,24 @@ export function AdminApp({
                   </Button>
                 </section>
               )}
-              {loadState === "ready" && (
+              {view.view === "ready" && (
                 <>
+                  {section === "Overview" && view.unavailable.length > 0 && (
+                    <section className="admin-panel admin-load-error" role="status">
+                      <h2>Some desks could not load</h2>
+                      <p>
+                        The counts below leave out what could not load. Other
+                        desks keep working.
+                      </p>
+                      <DeskErrors errors={view.unavailable} />
+                      <Button
+                        icon={<ArrowClockwise size={17} />}
+                        onClick={() => void fetchAll()}
+                      >
+                        Retry
+                      </Button>
+                    </section>
+                  )}
                   {section === "Overview" && (
                     <Overview
                       submissions={submissions}
@@ -922,6 +915,7 @@ export function AdminApp({
                       onLoadDemo={loadDemoData}
                       loadingDemo={busy}
                       readOnly={readOnly}
+                      unavailable={view.unavailable.map(({ source }) => source)}
                     />
                   )}
                   {section === "Submissions" && (
@@ -1006,6 +1000,7 @@ function Overview({
   onLoadDemo,
   loadingDemo,
   readOnly,
+  unavailable,
 }: {
   submissions: Submission[];
   records: EditorialRecord[];
@@ -1017,7 +1012,11 @@ function Overview({
   onLoadDemo: () => void;
   loadingDemo: boolean;
   readOnly: boolean;
+  unavailable: WorkspaceSource[];
 }) {
+  const missing = (source: WorkspaceSource) => unavailable.includes(source);
+  const count = (source: WorkspaceSource, value: number) =>
+    missing(source) ? "—" : value;
   const queue = submissions
     .filter(
       (item) =>
@@ -1062,14 +1061,14 @@ function Overview({
         <>
         <Stat
           label="Awaiting review"
-          value={pending}
+          value={count("submissions", pending)}
           detail="Submissions in the review queue"
           icon={<ClipboardText size={20} />}
           onClick={() => onNavigate("Submissions")}
         />
         <Stat
           label="Changes requested"
-          value={returned}
+          value={count("submissions", returned)}
           detail="Returned to contributors"
           icon={<ArrowClockwise size={20} />}
           onClick={() => onNavigate("Submissions")}
@@ -1078,7 +1077,7 @@ function Overview({
         )}
         <Stat
           label="Content records"
-          value={records.length}
+          value={count("content", records.length)}
           detail="Drafts, scheduled and published"
           icon={<Newspaper size={20} />}
           onClick={() => onNavigate("Aircraft Identifier")}
@@ -1086,7 +1085,7 @@ function Overview({
         {!readOnly && (
         <Stat
           label="Recent activity"
-          value={events.length}
+          value={count("audit", events.length)}
           detail="Events available in the audit log"
           icon={<ClockCounterClockwise size={20} />}
           onClick={() => onNavigate("Activity")}
@@ -1108,7 +1107,12 @@ function Overview({
               View all <span>→</span>
             </button>
           </div>
-          {queue.length ? (
+          {missing("submissions") ? (
+            <div className="admin-empty">
+              <b>Submissions could not load</b>
+              <span>The queue shows again once they load.</span>
+            </div>
+          ) : queue.length ? (
             <div className="admin-queue">
               {queue.map((item) => (
                 <button
@@ -1159,13 +1163,14 @@ function Overview({
             <span>
               <b>Aircraft Identifier</b>
               <small>
-                {
-                  records.filter(
-                    (item) =>
-                      item.kind === "identifier" && item.status !== "archived",
-                  ).length
-                }{" "}
-                records
+                {missing("content")
+                  ? "Could not load"
+                  : `${
+                      records.filter(
+                        (item) =>
+                          item.kind === "identifier" && item.status !== "archived",
+                      ).length
+                    } records`}
               </small>
             </span>
             <span>→</span>
@@ -1177,13 +1182,14 @@ function Overview({
             <span>
               <b>Plane of the Day</b>
               <small>
-                {
-                  records.filter(
-                    (item) =>
-                      item.kind === "potd" && item.status !== "archived",
-                  ).length
-                }{" "}
-                records
+                {missing("content")
+                  ? "Could not load"
+                  : `${
+                      records.filter(
+                        (item) =>
+                          item.kind === "potd" && item.status !== "archived",
+                      ).length
+                    } records`}
               </small>
             </span>
             <span>→</span>
@@ -1198,6 +1204,22 @@ function Overview({
   );
 }
 
+function DeskErrors({
+  errors,
+}: {
+  errors: { source: string; label: string; error: string }[];
+}) {
+  return (
+    <ul className="admin-desk-errors">
+      {errors.map(({ source, label, error }) => (
+        <li key={source}>
+          <b>{label}:</b> <span className="error">{error}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Stat({
   label,
   value,
@@ -1206,7 +1228,7 @@ function Stat({
   onClick,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   detail: string;
   icon: ReactNode;
   onClick: () => void;

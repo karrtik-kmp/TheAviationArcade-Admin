@@ -66,12 +66,26 @@
     `tests/dev-waiver.test.mjs`, 7 tests); `npm run build` and `npm run build:node` complete; eslint on the changed
     files reports the same findings as before the change, none new. Not run in a browser; nothing deployed.
 
+- 2026-11-18: A3.0, per-desk loading (`docs/A3_PLAN.md`). The workspace loads submissions, content, audit and Military
+  each on its own (`lib/workspace-load.ts`); a desk that needs a failed source shows "Could not load <desk>" with each
+  source's message and Retry, and the rest keep working. The Overview renders with what loaded, lists what didn't and
+  shows "—" for those counts. Media, Store and Users read none of these sources, so a D1 503 no longer hides them. A
+  401/403 or `ACCOUNT_CHANGED` from any one source still blocks the whole workspace before any data is applied; the
+  generation guard is unchanged. Demo (read-only) loading is unchanged.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 355/355 (new
+    `tests/workspace-load.test.mjs`, 8 tests); `npm run build` and `npm run build:node` complete; eslint on
+    `AdminApp.tsx` reports the same 13 findings before and after, none new. Browser, auth emulator,
+    mock roles, Vite dev server on 5180 (another session held 5173): `seedy@sites.test` signs in → Overview shows "Some
+    desks could not load" listing Submissions, Aircraft Identifier and Plane of the Day, Activity with the D1 503
+    message, counts "—"; Military readiness shows "Could not load Military readiness" for Military and Submissions.
+    Console errors: only the four D1 503s. Not checked: Media, Store and Users with `ROLES_SOURCE=backend` (no local
+    Backend was running; in mock mode those desks are hidden by design). Nothing deployed.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md` (A3.0 per-desk loading first,
-      then Military, Identifier on `content/identifier`, Plane of the Day, audit, then removing D1). Until A3.0 the
-      workspace loads submissions, content, audit and military (all D1) together, so it shows "Could not load the
-      workspace" and the backend-only Media, Store and Users desks are unreachable too.
+- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0 (per-desk loading) is done;
+      next Military (A3.1), Identifier on `content/identifier`, Plane of the Day, audit, then removing D1.
+- [ ] Walk Media, Store and Users with `ROLES_SOURCE=backend` against a local Backend now that A3.0 lets them load.
 - [ ] Open question for A3.1 (Backend/user): Military `rights_checked` needs a permission note and attribution, and
       `content_prepared` an https `referenceUrl`. Josh's sheet has no reference URL and the dev waiver doesn't cover it.
 - [ ] Set `DEV_DEMO_WAIVER=dev-demo` and `SITE_URL=https://dev.admin.playairplanegames.com` in the dev Admin's env
