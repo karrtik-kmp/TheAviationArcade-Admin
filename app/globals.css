@@ -88,6 +88,22 @@ button,
 a {
   touch-action: manipulation;
 }
+/* One chevron for every single-value select, pinned to the right edge and vertically centred.
+   Drawn with currentColor gradients so it follows the light/dark ink token. Rules that style a
+   select must set background-color, not the background shorthand, or the chevron is wiped. */
+select:not([multiple]):not([size]) {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
 button {
   cursor: pointer;
 }
@@ -757,7 +773,7 @@ button:active,
 .field input:where(:not([type="checkbox"], [type="radio"])),
 .field select,
 .field textarea {
-  background: var(--panel);
+  background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   min-height: 46px;
@@ -1283,7 +1299,7 @@ button:active,
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background-color: var(--panel);
   color: var(--ink);
   font-size: 12px;
 }
