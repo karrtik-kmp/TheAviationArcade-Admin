@@ -171,6 +171,9 @@ export function afterSignIn({
   const destination = returnTo == null
     ? audiences[audience].home
     : safeAccountReturn(returnTo);
+  // The Admin has no /account page (it is the public website's) and no verify-email flow: editor access is requested
+  // from Admin Support. So every editor sign-in goes to the workspace, whose access gate decides. No sign-up here.
+  if (audience === "admin") return destination;
   if (signup || !principal.emailVerified)
     return `/account?verify_email=1&return_to=${encodeURIComponent(destination)}`;
   return destination;

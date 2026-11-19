@@ -140,12 +140,31 @@
     a photo, then save a rank change on the returned version (2 → 3), retire; a change made behind the desk gives the
     conflict notice and reloads. Not checked: the real Backend, a real photo preview, Google sign-in. Nothing deployed.
 
+- 2026-11-19: Unverified editors no longer land on a 404 (client report: "This destination is unavailable." after
+  sign-in). `afterSignIn` sent every unverified account to `/account?verify_email=1`, a public-website page the Admin
+  doesn't have. For the `admin` audience it now returns the workspace destination (`lib/account.ts`, a copied module:
+  the website's other audiences are unchanged), and the workspace's existing access gate decides. Ruling (user,
+  2026-11-19): no verify-email step on the Admin; editor access is requested from Admin Support. A verify step was
+  built and walked, then removed on that ruling.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 388/388 (two new `afterSignIn`
+    cases); `npm run build` and `npm run build:node` complete. The earlier emulator walk confirmed an unverified
+    sign-in now reaches `/admin` instead of the 404; with the step removed it shows the existing "Access unavailable"
+    gate (not re-walked). Nothing deployed.
+  - Found while checking: the dev backend is live at `https://dev.api.playairplanegames.com` (routes under `/api/`,
+    Swagger at `/api/docs/`), API 0.27.3. 0.27.2 and 0.27.3 change only `servers`, so A3.0–A3.2 match it. Local walks
+    still use the demo project, which the real backend does not accept.
+
 ## Next
 
 - [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military) and A3.2
       (Aircraft Identifier) are done; next Plane of the Day (A3.3), audit, then removing D1.
 - [ ] Ask (user): keep the backend's editorial `identifier` kind (W1) as a second Identifier view, or drop it?
-- [ ] Walk the Military desk against the real Backend (dev data: `mil-a1` … `mil-a31`) and on `dev.admin.` after deploy.
+- [ ] Walk the Military and Aircraft Identifier desks on `dev.admin.` against the live dev backend after deploy (the
+      dev Admin's `GAME_API_BASE_URL` is the loopback backend, or `https://dev.api.playairplanegames.com/api`).
+- [ ] Website session: `afterSignIn` in `lib/account.ts` now keeps the `admin` audience on the Admin (no
+      `/account?verify_email=1`); copy it when convenient (the website's own audiences are unaffected).
+- [ ] Editor access still needs a verified email (backend ADR-0002 and the mock lists). If Admin Support creates
+      email/password accounts, their emails start unverified: they need Google sign-in or a verified email to get in.
 - [ ] Website session: `lib/request/backend.ts` gained `BackendError.errors` and `BackendError.detail` (both additive)
       here; copy them there when the website needs the backend's reasons.
 - [ ] Walk Media, Store and Users with `ROLES_SOURCE=backend` against a local Backend now that A3.0 lets them load.
@@ -154,8 +173,6 @@
       doesn't cover it. The desk only offers the fields; it never fills them.
 - [ ] Set `DEV_DEMO_WAIVER=dev-demo` and `SITE_URL=https://dev.admin.playairplanegames.com` in the dev Admin's env
       file at deploy (user / `server/`), never on the prod Admin.
-- [ ] An unverified email signing in is sent to `/account?verify_email=1` (`afterSignIn` in
-      `lib/account.ts`), which 404s on the admin host. Send it to the public site or show a notice here.
 - [ ] Real SIGTERM on Linux and the hosted start (`dev.admin.`) once `server/` has the Admin repo.
 
 - [ ] Run the Admin locally against the auth emulator and walk sign-in, each desk and sign-out.

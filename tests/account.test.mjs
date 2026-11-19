@@ -142,6 +142,16 @@ test("after sign-in lands on the return path, the area home, or email verificati
     afterSignIn({ audience: "photographer", returnTo: "/contribute", principal: signedIn({ emailVerified: false }) }),
     "/account?verify_email=1&return_to=%2Fcontribute",
   );
+  // The Admin has no /account page (a 404 there) and no verify-email flow: an unverified editor goes to the
+  // workspace, whose access gate decides.
+  assert.equal(
+    afterSignIn({ audience: "admin", returnTo: "/admin", principal: signedIn({ emailVerified: false }) }),
+    "/admin",
+  );
+  assert.equal(
+    afterSignIn({ audience: "admin", principal: signedIn({ emailVerified: false, staff: true }) }),
+    "/admin",
+  );
   assert.equal(
     afterSignIn({ audience: "player", principal: signedIn(), signup: true }),
     "/account?verify_email=1&return_to=%2Fplay",
