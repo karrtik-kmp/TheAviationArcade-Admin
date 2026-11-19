@@ -41,6 +41,8 @@ import type { IdentifierItem } from "@/lib/identifier-desk";
 import { MediaDesk } from "@/components/MediaDesk";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
+import { ActivityDesk } from "@/components/ActivityDesk";
+import type { AuditEvent } from "@/lib/audit-desk";
 import "@/components/admin.css";
 import {
   accountHeaders,
@@ -95,12 +97,6 @@ type Section =
   | "Store"
   | "Users"
   | "Activity";
-type AuditEvent = {
-  entity_id: string;
-  action: string;
-  detail: string;
-  created_at: string;
-};
 type Notice = { kind: "error" | "success"; text: string } | null;
 
 const navItems: { label: Section; icon: typeof SquaresFour }[] = [
@@ -1154,7 +1150,7 @@ export function AdminApp({
                   {section === "Users" && !readOnly && manageRoles && (
                     <UsersDesk sessionKey={user.sessionKey} onBlocked={blockAccess} />
                   )}
-                  {section === "Activity" && <Activity events={events} />}
+                  {section === "Activity" && <ActivityDesk events={events} />}
                 </>
               )}
             </div>
@@ -1265,7 +1261,7 @@ function Overview({
         <Stat
           label="Recent activity"
           value={count("audit", events.length)}
-          detail="Events available in the audit log"
+          detail="The newest audit events, up to 50"
           icon={<ClockCounterClockwise size={20} />}
           onClick={() => onNavigate("Activity")}
         />
@@ -2202,55 +2198,6 @@ function TextField({
         onChange={(_, data) => onChange(data.value)}
       />
     </label>
-  );
-}
-
-function Activity({ events }: { events: AuditEvent[] }) {
-  return (
-    <>
-      <div className="admin-heading">
-        <div>
-          <p className="eyebrow">AUDIT LOG</p>
-          <h1>Activity</h1>
-          <p>Recent editorial changes recorded by the server.</p>
-        </div>
-        <span className="admin-total">Latest {events.length}</span>
-      </div>
-      <section className="admin-panel">
-        <div className="admin-panel-header">
-          <div>
-            <h2>Recent events</h2>
-            <p>Most recent first · up to 50 events</p>
-          </div>
-        </div>
-        {events.length ? (
-          <div className="audit-list">
-            {events.map((event, index) => (
-              <div
-                className="audit-event"
-                key={`${event.entity_id}-${event.created_at}-${index}`}
-              >
-                <span className="audit-mark">
-                  <ClockCounterClockwise size={17} />
-                </span>
-                <div>
-                  <b>{event.action.replaceAll("_", " ")}</b>
-                  <small>Record {event.entity_id}</small>
-                  {event.detail && <small>{event.detail}</small>}
-                </div>
-                <time>{prettyDate(event.created_at)}</time>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="admin-empty">
-            <ClockCounterClockwise size={25} />
-            <b>No activity recorded yet</b>
-            <span>Editorial actions will appear here.</span>
-          </div>
-        )}
-      </section>
-    </>
   );
 }
 

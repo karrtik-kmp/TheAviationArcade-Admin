@@ -3,7 +3,8 @@
  * (router.ts) has already resolved the principal, applied the account fence and the audience,
  * and checked the origin of mutations before a handler runs. Handlers parse the request and call
  * a store: photographer submissions under review (lib/submissions/d1.ts), the Aircraft Identifier
- * and Plane of the Day desks (ContentStore). The Military desk is on the game backend (military-routes.ts, A3.1).
+ * and Plane of the Day desks (ContentStore). The Military desk is on the game backend (military-routes.ts, A3.1), and so
+ * is the Activity desk (audit-routes.ts, A3.4).
  * Relative imports only, so the table loads under `node --test`.
  */
 import { HttpError, respond } from "../errors.ts";
@@ -19,6 +20,7 @@ import { roleRoutes } from "./role-routes.ts";
 import { mediaRoutes } from "./media-routes.ts";
 import { militaryRoutes } from "./military-routes.ts";
 import { identifierRoutes } from "./identifier-routes.ts";
+import { auditRoutes } from "./audit-routes.ts";
 import { storeRoutes } from "./store-routes.ts";
 import { storePurchaseRoutes } from "./store-purchase-routes.ts";
 
@@ -107,14 +109,6 @@ async function saveContent(ctx: Ctx, id: string) {
   return respond({ record });
 }
 
-async function auditEvents(ctx: Ctx) {
-  const rows = await ctx
-    .db()
-    .prepare("SELECT entity_id,action,detail,created_at FROM audit_events ORDER BY created_at DESC LIMIT 50")
-    .all();
-  return respond({ events: rows.results });
-}
-
 /** Literal paths come before parameter paths that could match them. */
 export const routes: Route[] = [
   route({ method: "GET", path: "submissions/:id/photo", audience: "owner", run: (ctx) => submissionPhoto(ctx, ctx.params.id) }),
@@ -144,10 +138,10 @@ export const routes: Route[] = [
   }),
   route({ method: "POST", path: "admin/content", audience: "staff", mutation: true, run: createContent }),
   route({ method: "PUT", path: "admin/content/:id", audience: "staff", mutation: true, run: (ctx) => saveContent(ctx, ctx.params.id) }),
-  route({ method: "GET", path: "admin/audit", audience: "staff", run: auditEvents }),
   ...roleRoutes,
   ...militaryRoutes,
   ...identifierRoutes,
+  ...auditRoutes,
   ...mediaRoutes,
   ...storeRoutes,
   ...storePurchaseRoutes,
