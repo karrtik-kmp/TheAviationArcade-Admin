@@ -42,10 +42,11 @@ test("a desk shows its own source's error, with the server's message", () => {
   assert.deepEqual(sectionView("Activity", states), { view: "ready", unavailable: [] });
 });
 
-test("Military needs its packages and the submissions it offers as photos", () => {
-  assert.equal(sectionView("Military readiness", sourceStates(results({ submissions: d1Down }))).view, "error");
+test("Military reads only its own backend source since A3.1, so the D1 desks failing don't hide it", () => {
+  assert.deepEqual(sourcesFor("Military readiness"), ["military"]);
+  const d1Only = results({ submissions: d1Down, content: d1Down, audit: d1Down });
+  assert.deepEqual(sectionView("Military readiness", sourceStates(d1Only)), { view: "ready", unavailable: [] });
   assert.equal(sectionView("Military readiness", sourceStates(results({ military: d1Down }))).view, "error");
-  assert.equal(sectionView("Military readiness", sourceStates(results())).view, "ready");
 });
 
 test("the Overview renders with what loaded and lists what didn't", () => {
@@ -56,8 +57,10 @@ test("the Overview renders with what loaded and lists what didn't", () => {
 
 test("a section waits while any of its sources loads", () => {
   const states = { ...sourceStates(results()), submissions: { state: "loading" } };
-  assert.deepEqual(sectionView("Military readiness", states), { view: "loading" });
+  assert.deepEqual(sectionView("Submissions", states), { view: "loading" });
+  assert.deepEqual(sectionView("Overview", states), { view: "loading" });
   assert.deepEqual(sectionView("Plane of the Day", states), { view: "ready", unavailable: [] });
+  assert.deepEqual(sectionView("Military readiness", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Media", allSources({ state: "loading" })), { view: "ready", unavailable: [] });
 });
 

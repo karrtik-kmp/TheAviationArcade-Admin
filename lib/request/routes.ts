@@ -3,17 +3,11 @@
  * (router.ts) has already resolved the principal, applied the account fence and the audience,
  * and checked the origin of mutations before a handler runs. Handlers parse the request and call
  * a store: photographer submissions under review (lib/submissions/d1.ts), the Aircraft Identifier
- * and Plane of the Day desks (ContentStore) and the Military desk (EditorialStore). Relative imports only, so
- * the table loads under `node --test`.
+ * and Plane of the Day desks (ContentStore). The Military desk is on the game backend (military-routes.ts, A3.1).
+ * Relative imports only, so the table loads under `node --test`.
  */
 import { HttpError, respond } from "../errors.ts";
-import {
-  EditorialError,
-  packageOf,
-  packagesOf,
-  release,
-  type LiveState,
-} from "../editorial/store.ts";
+import { EditorialError } from "../editorial/store.ts";
 import {
   allSubmissions,
   findSubmission,
@@ -23,6 +17,7 @@ import {
 import { route, type Route, type RouteContext } from "./router.ts";
 import { roleRoutes } from "./role-routes.ts";
 import { mediaRoutes } from "./media-routes.ts";
+import { militaryRoutes } from "./military-routes.ts";
 import { storeRoutes } from "./store-routes.ts";
 import { storePurchaseRoutes } from "./store-purchase-routes.ts";
 
@@ -111,70 +106,6 @@ async function saveContent(ctx: Ctx, id: string) {
   return respond({ record });
 }
 
-/** The desk's JSON shape: saved packages, the latest releases with their status, and the live pointer. */
-async function militaryState(ctx: Ctx, live?: LiveState) {
-  const listed = await ctx.editorial().list("military");
-  const { releases, ...pointer } = live ?? listed.live;
-  return { packages: packagesOf(listed.items), releases, pointer };
-}
-
-/**
- * Saves the package for one question in the client's Military sheet. Version 0 creates it.
- * The answer and wrong answers always come from the sheet. Approval never publishes.
- */
-async function saveMilitary(ctx: Ctx, aircraftId: string) {
-  const body = await bodyJson(ctx.request);
-  const item = await editorialCall(() =>
-    ctx.editorial().saveDraft(
-      "military",
-      aircraftId,
-      { baseVersion: body.version, stage: body.stage, evidence: body.data },
-      { principal: ctx.principal.userId },
-    ),
-  );
-  return respond({ package: packageOf(item) });
-}
-
-/**
- * Records a batch release of every approved package: an uploaded candidate, then made live.
- * If another editor wins in between, the candidate stays listed as uploaded. Nothing is
- * delivered or published.
- */
-async function releaseMilitary(ctx: Ctx) {
-  const body = await bodyJson(ctx.request);
-  const live = await editorialCall(() =>
-    release(
-      ctx.editorial(),
-      "military",
-      { basis: body.basis, previewed: body.previewed, liveVersion: body.pointerVersion },
-      { principal: ctx.principal.userId },
-    ),
-  );
-  return respond(await militaryState(ctx, live));
-}
-
-/** Makes an uploaded candidate live, if its packages and photographs are unchanged since upload. */
-async function activateMilitary(ctx: Ctx) {
-  const body = await bodyJson(ctx.request);
-  const live = await editorialCall(() =>
-    ctx.editorial().activate(
-      "military",
-      { release: body.release, liveVersion: body.pointerVersion },
-      { principal: ctx.principal.userId },
-    ),
-  );
-  return respond(await militaryState(ctx, live));
-}
-
-/** Makes the release before the current one current again. */
-async function restoreMilitary(ctx: Ctx) {
-  const body = await bodyJson(ctx.request);
-  const live = await editorialCall(() =>
-    ctx.editorial().restore("military", { liveVersion: body.pointerVersion }, { principal: ctx.principal.userId }),
-  );
-  return respond(await militaryState(ctx, live));
-}
-
 async function auditEvents(ctx: Ctx) {
   const rows = await ctx
     .db()
@@ -212,13 +143,9 @@ export const routes: Route[] = [
   }),
   route({ method: "POST", path: "admin/content", audience: "staff", mutation: true, run: createContent }),
   route({ method: "PUT", path: "admin/content/:id", audience: "staff", mutation: true, run: (ctx) => saveContent(ctx, ctx.params.id) }),
-  route({ method: "GET", path: "admin/military", audience: "staff", run: async (ctx) => respond(await militaryState(ctx)) }),
-  route({ method: "POST", path: "admin/military/releases", audience: "staff", mutation: true, run: releaseMilitary }),
-  route({ method: "POST", path: "admin/military/releases/activate", audience: "staff", mutation: true, run: activateMilitary }),
-  route({ method: "POST", path: "admin/military/releases/restore", audience: "staff", mutation: true, run: restoreMilitary }),
-  route({ method: "PUT", path: "admin/military/:id", audience: "staff", mutation: true, run: (ctx) => saveMilitary(ctx, ctx.params.id) }),
   route({ method: "GET", path: "admin/audit", audience: "staff", run: auditEvents }),
   ...roleRoutes,
+  ...militaryRoutes,
   ...mediaRoutes,
   ...storeRoutes,
   ...storePurchaseRoutes,

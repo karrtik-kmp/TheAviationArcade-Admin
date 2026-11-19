@@ -35,7 +35,7 @@ import { useAccountSession } from "@/components/AccountSession";
 import { useDevDemoWaiver } from "@/components/PublicSite";
 import { Brand, ThemeToggle } from "@/components/AdminShell";
 import { AccountActions } from "@/components/AccessGate";
-import { MilitaryWorkspace } from "@/components/MilitaryWorkspace";
+import { MilitaryWorkspace, type ReleaseAction } from "@/components/MilitaryWorkspace";
 import { MediaDesk } from "@/components/MediaDesk";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
@@ -58,14 +58,14 @@ import {
   reviewError,
 } from "@/lib/rules";
 import { sampleEditorialRecords } from "@/lib/demo-samples";
-import type {
-  MilitaryAircraft,
-  MilitaryPackage,
-  MilitaryPackageData,
-  MilitaryRelease,
-  MilitaryStage,
-  ReleasePointer,
-} from "@/lib/military";
+import {
+  rankName,
+  stageNames as prepStageNames,
+  type MilitaryDesk,
+  type MilitaryItem,
+  type PrepEvidence,
+  type PrepStage,
+} from "@/lib/military-prep";
 import { WAIVED_SOURCE_TEXT, factualSourceText } from "@/lib/dev-waiver";
 import { sitePath } from "@/lib/paths";
 import { rankNames } from "@/lib/catalog";
@@ -140,7 +140,12 @@ function emptyChecks(): ReviewChecks {
     category: false,
   };
 }
-const emptyPointer = { current: null, history: [], version: 0 };
+const emptyMilitary: MilitaryDesk = {
+  items: [],
+  pointer: { current: null, history: [], version: 0 },
+  releases: [],
+  ownRankCounts: { trainee: 0, "first-officer": 0, captain: 0, "check-airman": 0, "chief-pilot": 0 },
+};
 
 function seedData(record: EditorialRecord): EditorialData {
   return { ...record.data, distractors: [...record.data.distractors] };
@@ -212,11 +217,9 @@ export function AdminApp({
   const [section, setSection] = useState<Section>("Overview");
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [records, setRecords] = useState<EditorialRecord[]>([]);
-  const [packages, setPackages] = useState<MilitaryPackage[]>([]);
-  const [releases, setReleases] = useState<MilitaryRelease[]>([]);
-  const [pointer, setPointer] = useState<ReleasePointer & { version: number }>(
-    emptyPointer,
-  );
+  const [military, setMilitary] = useState<MilitaryDesk>(emptyMilitary);
+  /** Counts Military reloads, so an older answer that lands late never replaces a newer one. */
+  const militaryReloads = useRef(0);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [sources, setSources] = useState<SourceStates>(() =>
     allSources({ state: "loading" }),
@@ -238,9 +241,7 @@ export function AdminApp({
     drafts.reset();
     setSubmissions([]);
     setRecords([]);
-    setPackages([]);
-    setReleases([]);
-    setPointer(emptyPointer);
+    setMilitary(emptyMilitary);
     setEvents([]);
     setSelectedId("");
     setRecordId("");
@@ -587,96 +588,165 @@ export function AdminApp({
     }
   }
 
+  /** The Military desk's read (A3.1): the backend items with the release state. */
   function applyMilitary(body: Record<string, unknown>) {
-    setPackages(
-      Array.isArray(body.packages) ? (body.packages as MilitaryPackage[]) : [],
-    );
-    setReleases(
-      Array.isArray(body.releases) ? (body.releases as MilitaryRelease[]) : [],
-    );
-    const live =
+    const pointer =
       body.pointer && typeof body.pointer === "object"
-        ? (body.pointer as ReleasePointer & { version: number })
-        : emptyPointer;
-    setPointer(live);
-    // A release or restore is based on the pointer the desk last showed.
-    drafts.open("military-live", live.version);
+        ? (body.pointer as MilitaryDesk["pointer"])
+        : emptyMilitary.pointer;
+    const items = Array.isArray(body.items) ? (body.items as MilitaryItem[]) : [];
+    setMilitary((previous) => ({
+      // A reload that started before a save can land after it: never replace an item with an older version.
+      items: items.map((item) => {
+        const known = previous.items.find((each) => each.id === item.id);
+        return known && known.version > item.version ? known : item;
+      }),
+      pointer,
+      releases: Array.isArray(body.releases)
+        ? (body.releases as MilitaryDesk["releases"])
+        : [],
+      ownRankCounts:
+        body.ownRankCounts && typeof body.ownRankCounts === "object"
+          ? (body.ownRankCounts as MilitaryDesk["ownRankCounts"])
+          : emptyMilitary.ownRankCounts,
+    }));
+    // Making a release live or restoring one is based on the pointer the desk last showed.
+    drafts.open("military-live", pointer.version);
   }
 
-  /** Records a batch release, makes an uploaded one live, or restores the previous one. None delivers or publishes. */
-  async function changeRelease(
-    action: "release" | "restore" | "activate",
-    basis = "",
-    release?: number,
-  ) {
+  /**
+   * Reloads only the Military desk, in place: the desk stays mounted, so an open question keeps its typed form. Used
+   * after a conflict, an approval and a release step. Returns "" when the desk was reloaded (or a newer reload took
+   * over), else why not.
+   */
+  async function reloadMilitary(): Promise<string> {
+    const generation = drafts.generation();
+    const sequence = ++militaryReloads.current;
+    let status = 0;
+    let body: Record<string, unknown> = {};
+    try {
+      const response = await fetch(sitePath("/api/admin/military"), {
+        cache: "no-store",
+        headers: accountHeaders(user.sessionKey),
+      });
+      status = response.status;
+      body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    } catch {
+      status = 0;
+    }
+    if (!drafts.isCurrent(generation)) return "";
+    if (status === 401 || status === 403 || body.code === "ACCOUNT_CHANGED") {
+      blockAccess(status || 409);
+      return "";
+    }
+    // A newer reload was started after this one: its answer is the one to show.
+    if (sequence !== militaryReloads.current) return "";
+    if (status < 200 || status >= 300)
+      return `The Military desk could not reload, so it may not show the latest state. ${typeof body.error === "string" ? body.error : "Reload the page."}`;
+    applyMilitary(body);
+    return "";
+  }
+
+  /** A Military request that did not succeed. A conflict reloads the desk; an open question keeps its form. */
+  function militaryFailed(outcome: Outcome, what: "question" | "release") {
+    if (outcome.kind !== "conflict") return failed(outcome);
+    setNotice({
+      kind: "error",
+      text:
+        what === "question"
+          ? `${outcome.message} Your form has been kept and the list reloaded. Select the question again to load its latest version; that replaces your unsaved changes.`
+          : `${outcome.message} The desk has been reloaded.`,
+    });
+    void reloadMilitary().then((problem) => {
+      if (problem) setNotice({ kind: "error", text: `${outcome.message} ${problem}` });
+    });
+  }
+
+  /** Uploads a release, makes an uploaded one live, or restores the previous one. Recorded, never delivered. */
+  async function changeRelease(step: ReleaseAction) {
     setBusy(true);
     setNotice(null);
     try {
-      const outcome = await drafts.save(
-        "military-live",
-        "POST",
-        `/api/admin/military/releases${action === "release" ? "" : `/${action}`}`,
-        action === "release"
-          ? { basis, previewed: true }
-          : action === "activate"
-            ? { release }
-            : {},
-        (body) => (body.pointer as { version?: number } | undefined)?.version,
-        "pointerVersion",
-      );
+      const outcome =
+        step.action === "upload"
+          ? await drafts.request("POST", "/api/admin/military/releases", {
+              itemIds: step.itemIds,
+              basis: step.basis,
+              previewed: true,
+            })
+          : await drafts.save(
+              "military-live",
+              "POST",
+              step.action === "activate"
+                ? `/api/admin/military/releases/${step.release}/activate`
+                : "/api/admin/military/releases/restore",
+              {},
+              (body) => (body.pointer as { version?: number } | undefined)?.version,
+              "expectedPointerVersion",
+            );
       if (outcome.kind !== "ok") {
-        failed(outcome, true);
+        militaryFailed(outcome, "release");
         return false;
       }
-      applyMilitary(outcome.body);
-      const current = (outcome.body.pointer as ReleasePointer | undefined)?.current;
-      setNotice({
-        kind: "success",
-        text:
-          action !== "restore"
-            ? `Release ${current} recorded. Nothing was delivered or published; Military stays Coming Soon.`
-            : `Release ${current} is current again.`,
-      });
+      const number =
+        step.action === "upload"
+          ? (outcome.body.number as number | undefined)
+          : (outcome.body.pointer as { current?: number | null } | undefined)?.current;
+      const problem = await reloadMilitary();
+      const done =
+        step.action === "upload"
+          ? `Release ${number} uploaded. It is not live yet; make it live when you are ready. Nothing reaches a player.`
+          : step.action === "activate"
+            ? `Release ${number} is now the current release. It is recorded, not delivered; Military stays Coming Soon.`
+            : `Release ${number} is current again.`;
+      // The step happened; if the desk could not show it, say so rather than invite a second upload.
+      setNotice(problem ? { kind: "error", text: `${done} ${problem}` } : { kind: "success", text: done });
       return true;
     } finally {
       setBusy(false);
     }
   }
 
-  /** The package editor opened a question: later saves are based on this version. */
-  function openMilitary(aircraftId: string, version: number) {
-    drafts.open(`military:${aircraftId}`, version);
+  /** The editor opened a question: later saves are based on this version. */
+  function openMilitary(id: string, version: number) {
+    drafts.open(`military:${id}`, version);
   }
   async function saveMilitary(
-    aircraft: MilitaryAircraft,
-    stage: MilitaryStage,
-    data: MilitaryPackageData,
-  ): Promise<MilitaryPackage | null> {
+    item: MilitaryItem,
+    stage: PrepStage,
+    evidence: PrepEvidence,
+    mediaId: string | null,
+  ): Promise<MilitaryItem | null> {
     setBusy(true);
     setNotice(null);
     try {
       const outcome = await drafts.save(
-        `military:${aircraft.id}`,
+        `military:${item.id}`,
         "PUT",
-        `/api/admin/military/${aircraft.id}`,
-        { stage, data },
-        (body) => (body.package as MilitaryPackage | undefined)?.version,
+        `/api/admin/military/${encodeURIComponent(item.id)}/preparation`,
+        { stage, evidence, mediaId },
+        (body) => (body.item as MilitaryItem | undefined)?.version,
       );
       if (outcome.kind !== "ok") {
-        failed(outcome, true);
+        militaryFailed(outcome, "question");
         return null;
       }
-      const updated = outcome.body.package as MilitaryPackage;
-      setPackages((previous) => [
-        ...previous.filter((item) => item.aircraftId !== updated.aircraftId),
-        updated,
-      ]);
+      const updated = outcome.body.item as MilitaryItem;
+      setMilitary((previous) => ({
+        ...previous,
+        items: previous.items.map((each) => (each.id === updated.id ? updated : each)),
+      }));
+      // The own-rank counts move with approvals; refresh them without touching the open form.
+      if (stage === "approved" || item.preparation?.stage === "approved")
+        void reloadMilitary().then((problem) => problem && setNotice({ kind: "error", text: problem }));
       setNotice({
         kind: "success",
         text:
-          stage === "approved"
-            ? `${aircraft.name} approved. Nothing was published; Military stays Coming Soon.`
-            : `${aircraft.name} saved as ${stage.replaceAll("_", " ")}.`,
+          outcome.body.changed === false
+            ? "Nothing changed, so nothing was saved."
+            : stage === "approved"
+              ? `${updated.data.answer} (${rankName(updated.rank)}) approved. Nothing was published; Military stays Coming Soon.`
+              : `${updated.data.answer} saved as ${prepStageNames[stage]}.`,
       });
       return updated;
     } finally {
@@ -959,14 +1029,14 @@ export function AdminApp({
                   )}
                   {section === "Military readiness" && !readOnly && (
                     <MilitaryWorkspace
-                      packages={packages}
-                      releases={releases}
-                      pointer={pointer}
-                      onRelease={changeRelease}
-                      submissions={submissions}
+                      desk={military}
+                      sessionKey={user.sessionKey}
                       busy={busy}
                       onOpen={openMilitary}
                       onSave={saveMilitary}
+                      onRelease={changeRelease}
+                      onBlocked={blockAccess}
+                      onOpenMedia={manageRoles ? () => setSection("Media") : undefined}
                     />
                   )}
                   {section === "Media" && !readOnly && manageRoles && (

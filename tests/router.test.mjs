@@ -149,7 +149,7 @@ test("the account fence refuses a stale session on every non-public route, after
     assert.equal((await call(r.method, concrete(r.path), { as: "demo", fence: "x" })).status, 403);
   }
   const key = await accountSessionKey(tokens.staff.userId);
-  assert.equal((await call("GET", "admin/military", { as: "staff", fence: key })).status, 200);
+  assert.equal((await call("GET", "admin/submissions", { as: "staff", fence: key })).status, 200);
 });
 
 test("mutations from another origin are refused after sign-in", async () => {
@@ -166,43 +166,28 @@ test("one verification per request; none for unmatched public paths", async () =
   const { call, verifier } = harness();
   assert.equal((await call("GET", "featured")).status, 404, "the Admin serves no public routes");
   assert.equal(verifier.calls, 0);
-  const saved = await call("PUT", "admin/military/mil-a1", {
-    as: "staff",
-    body: {
-      version: 0,
-      stage: "missing_photo",
-      data: {
-        photoSource: "",
-        submissionId: "",
-        licenseUrl: "",
-        permission: "",
-        attribution: "",
-        referenceUrl: "",
-        answer: "",
-        aliases: [],
-        distractors: ["", "", ""],
-        hint: "",
-        reveal: "",
-        checklist: { identity: false, answers: false, crop: false, clipperCard: false },
-        notes: "",
-      },
-    },
-  });
-  assert.equal(saved.status, 200);
-  assert.equal(saved.body.package.data.answer, "Warthog A-10 Thunderbolt II");
+  assert.equal((await call("GET", "admin/submissions", { as: "staff" })).status, 200);
   assert.equal(verifier.calls, 1);
 });
 
-test("a refused release returns every reason", async () => {
-  const { call } = harness();
-  const state = (await call("GET", "admin/military", { as: "staff" })).body;
+test("a refused Military release returns the backend's reasons as given", async () => {
+  const { BackendError } = await import("../lib/request/backend.ts");
+  const reasons = ["mil-a5: not approved.", "Trainee: a Trip cannot be filled."];
+  const backend = fakeBackend((method, path) => {
+    if (method === "POST" && path === "/v1/admin/content/aircraft-identifier-military/releases")
+      throw new BackendError(422, "content_invalid", undefined, reasons);
+    return {};
+  });
+  const { call } = harness({ backend });
   const refused = await call("POST", "admin/military/releases", {
     as: "staff",
-    body: { basis: "", previewed: true, pointerVersion: state.pointer.version },
+    body: { itemIds: ["mil-a5"], basis: "mil-a5:3", previewed: true },
   });
   assert.equal(refused.status, 422);
   assert.equal(refused.body.error, "This batch cannot be released yet.");
-  assert.ok(refused.body.errors.includes("Trainee: 0 of 6 questions approved."));
+  assert.deepEqual(refused.body.errors, reasons);
+  assert.equal(backend.calls.length, 1);
+  assert.deepEqual(backend.calls[0].body, { itemIds: ["mil-a5"], basis: "mil-a5:3", previewed: true });
 });
 
 test("unknown paths keep their old answers", async () => {
@@ -241,7 +226,7 @@ const adminRow = (over = {}) => ({
 
 test("staff and photographer come only from active backend roles", async () => {
   const { call } = harness();
-  assert.equal((await call("GET", "admin/military", { as: "staff" })).status, 200);
+  assert.equal((await call("GET", "admin/submissions", { as: "staff" })).status, 200);
   assert.equal((await call("GET", "admin/military", { as: "photographer" })).status, 403, "a photographer is not staff");
   const pending = harness({ roles: { ...backendRoles, staff: [row("admin", "pending")] } });
   assert.equal((await pending.call("GET", "admin/military", { as: "staff" })).status, 403, "a pending admin row grants nothing");
@@ -368,8 +353,11 @@ test("mock roles from the deployment's lists: verified emails only, and nothing 
   const lists = { admins: ["editor@example.com"], photographers: ["lens@example.com"] };
   const backend = fakeBackend(() => ({}));
   const { call } = harness({ backend, roles: async (_bearer, user) => mockRoles(user, lists) });
-  assert.equal((await call("GET", "admin/military", { as: "staff" })).status, 200, "a listed admin is staff");
+  assert.equal((await call("GET", "admin/submissions", { as: "staff" })).status, 200, "a listed admin is staff");
   assert.equal((await call("GET", "admin/military", { as: "photographer" })).status, 403);
+  // The Military desk is on the backend (A3.1): with mock roles it is unavailable and makes no call.
+  const military = await call("GET", "admin/military", { as: "staff" });
+  assert.deepEqual([military.status, military.body.code], [404, "MILITARY_UNAVAILABLE"]);
   // Photos need the backend: with mock roles nobody can send one, listed photographer or not.
   const media = await call("GET", "media", { as: "photographer" });
   assert.deepEqual([media.status, media.body.code], [404, "MEDIA_UNAVAILABLE"]);

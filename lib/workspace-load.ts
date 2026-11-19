@@ -40,8 +40,8 @@ const sectionNeeds: Record<string, readonly WorkspaceSource[]> = {
   Submissions: ["submissions"],
   "Aircraft Identifier": ["content"],
   "Plane of the Day": ["content"],
-  // The Military desk offers approved submissions as photos, so it needs both.
-  "Military readiness": ["military", "submissions"],
+  // On the game backend since A3.1; its photos come from the Media routes, which the desk reads itself.
+  "Military readiness": ["military"],
   Activity: ["audit"],
 };
 

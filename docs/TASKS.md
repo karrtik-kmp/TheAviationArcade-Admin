@@ -81,13 +81,51 @@
     Console errors: only the four D1 503s. Not checked: Media, Store and Users with `ROLES_SOURCE=backend` (no local
     Backend was running; in mock mode those desks are hidden by design). Nothing deployed.
 
+- 2026-11-19: A3.1, the Military desk on the game backend (`docs/A3_PLAN.md`; contract 0.24.0 preparation, 0.25.0
+  releases, API 0.27.1). `admin/military` routes (`lib/request/military-routes.ts`) replace the D1 ones: `GET` reads the
+  `aircraft-identifier-military` items and the release state together; `PUT admin/military/:id/preparation`, `POST
+  admin/military/releases`, `POST …/releases/:number/activate` and `POST …/releases/restore` forward to the backend with
+  the admin's own token. Strict parsers in `lib/request/military.ts`. With mock roles every route is 404
+  `MILITARY_UNAVAILABLE` and no backend call is made. A busy release or module lock is 503 `BUSY` with `Retry-After`
+  (nothing changed, so the form stays); a version conflict is 409 and reloads the desk in place (the open question keeps
+  its typed form, the base version is not moved); `content_invalid` passes the backend's `errors[]` through as given.
+  `BackendError` now carries `errors[]` (additive; `lib/request/backend.ts` is a copied module, see below).
+  - Desk (`components/MilitaryWorkspace.tsx`, `lib/military-prep.ts`): questions come from the backend items, not the
+    local roster; a photo is linked by `med-` id from the published photos (Media routes) with a preview of the linked
+    one; stage pre-checks mirror the backend's rules in its words; stale preparations say "prepare again". Releases:
+    choose every question (batch) or only the approved, current, photographed ones (R-3), preview sample Trips, upload,
+    then make live; restore steps back. Nothing is delivered. The Military section no longer waits on D1 submissions.
+  - The D1 Military routes are gone; their store code (`lib/military.ts` roster and package rules, the editorial
+    store's `military` kind) stays until A3.5 removes D1.
+  - Independent review (code-reviewer agent) found, and this change fixes: a late save could fill another open
+    question's form (the result now applies only to the question still open; the roster is locked while saving); an
+    approved question with a withdrawn photo could not be stepped back (every earlier stage is offered now); the crop
+    preview was the photo's draft, not the published version a release freezes (the desk now says so when they differ);
+    an older upload could be offered as "make live"; reloads could land out of order (sequenced, and an item never goes
+    back to an older version); a failed reload after a release step was hidden; a desk-read 404 said "question not
+    found". A photo known to be unpublished now blocks the forward stage with a link to the Media desk.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 377/377 (new
+    `tests/military-routes.test.mjs` with contract checks of every parser, `tests/military-prep.test.mjs`; router tests
+    moved off the D1 Military routes); `npm run build` and `npm run build:node` complete; eslint: no new findings.
+    Browser walk on the Vite dev server (5179) with the auth emulator and `ROLES_SOURCE=backend` against a LOCAL FAKE
+    backend (a scratch script answering the contract's Military and Media routes from the client's sheet rows; not the
+    real Backend): 31 questions by rank; link a photo and mark Rights checked (version 2); a change made behind the desk
+    gives the conflict notice, reloads the list and keeps the typed text; upload a one-question release and make it live;
+    after the fixes, step an approved question straight back to Missing photo.
+    Media, Store and Users appear with backend roles. Not checked: the real Backend (none running here), the photo
+    preview with a real signed link, and Google sign-in. Nothing deployed.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0 (per-desk loading) is done;
-      next Military (A3.1), Identifier on `content/identifier`, Plane of the Day, audit, then removing D1.
+- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0 and A3.1 (Military) are done;
+      next Identifier on `content/identifier` (A3.2), Plane of the Day, audit, then removing D1.
+- [ ] Walk the Military desk against the real Backend (dev data: `mil-a1` … `mil-a31`) and on `dev.admin.` after deploy.
+- [ ] Website session: `lib/request/backend.ts` gained `BackendError.errors` (additive) here; copy it there when the
+      website needs the backend's reasons.
 - [ ] Walk Media, Store and Users with `ROLES_SOURCE=backend` against a local Backend now that A3.0 lets them load.
-- [ ] Open question for A3.1 (Backend/user): Military `rights_checked` needs a permission note and attribution, and
-      `content_prepared` an https `referenceUrl`. Josh's sheet has no reference URL and the dev waiver doesn't cover it.
+- [ ] Open question (Backend/user), still open after A3.1: Military `rights_checked` needs a permission note and
+      attribution, and `content_prepared` an https `referenceUrl`. Josh's sheet has no reference URL and the dev waiver
+      doesn't cover it. The desk only offers the fields; it never fills them.
 - [ ] Set `DEV_DEMO_WAIVER=dev-demo` and `SITE_URL=https://dev.admin.playairplanegames.com` in the dev Admin's env
       file at deploy (user / `server/`), never on the prod Admin.
 - [ ] An unverified email signing in is sent to `/account?verify_email=1` (`afterSignIn` in

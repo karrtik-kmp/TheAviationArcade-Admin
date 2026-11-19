@@ -23,11 +23,14 @@ export class BackendError extends Error {
   code: string;
   /** Seconds, from `Retry-After`. */
   retryAfter?: number;
-  constructor(status: number, code: string, retryAfter?: number) {
+  /** Every reason the backend listed (`errors[]` on a refusal), plain English for staff; [] when absent. */
+  errors: string[];
+  constructor(status: number, code: string, retryAfter?: number, errors: string[] = []) {
     super(`Game backend answered ${status}${code ? ` ${code}` : ""}.`);
     this.status = status;
     this.code = code;
     this.retryAfter = retryAfter;
+    this.errors = errors;
   }
 }
 
@@ -50,6 +53,15 @@ export type BackendClient = {
     options?: SendOptions,
   ): Promise<{ status: number; body: unknown }>;
 };
+
+/** A refusal's `errors[]` (openapi `EditorialInvalid`, `ReleaseRefusal`): strings only, at most 100 of 1000 characters. */
+function refusalReasons(body: unknown): string[] {
+  if (!body || typeof body !== "object" || !("errors" in body) || !Array.isArray(body.errors)) return [];
+  return body.errors
+    .filter((reason): reason is string => typeof reason === "string" && reason.trim() !== "")
+    .slice(0, 100)
+    .map((reason) => (reason.length > 1000 ? `${reason.slice(0, 999)}…` : reason));
+}
 
 export function backendClient(
   options: { baseUrl?: string; fetch?: FetchFn; timeoutMs?: number },
@@ -104,7 +116,7 @@ export function backendClient(
           : "";
       const header = response.headers.get("Retry-After");
       const retry = header === null || header.trim() === "" ? NaN : Number(header);
-      throw new BackendError(response.status, code, Number.isFinite(retry) && retry >= 0 ? retry : undefined);
+      throw new BackendError(response.status, code, Number.isFinite(retry) && retry >= 0 ? retry : undefined, refusalReasons(parsed));
     }
     return { status: response.status, body: parsed };
   }
