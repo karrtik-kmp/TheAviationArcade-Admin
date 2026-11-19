@@ -115,13 +115,39 @@
     Media, Store and Users appear with backend roles. Not checked: the real Backend (none running here), the photo
     preview with a real signed link, and Google sign-in. Nothing deployed.
 
+- 2026-11-19: A3.2, the Aircraft Identifier desk on the game backend (`docs/A3_PLAN.md`; content module `identifier`,
+  API 0.27.1). `admin/identifier` routes (`lib/request/identifier-routes.ts`, parsers in `lib/request/identifier.ts` on a
+  `contentItemSchema` factory shared with Military): `GET` lists the items; `PATCH :id` edits rank and the whole payload
+  (`{ answer, wrong[3], sourceFile }`, the file name sent back unchanged); `POST :id/retire`, `POST :id/restore`; `PUT
+  :id/media` links or unlinks a photo (`expectedVersion`). Mock roles: 404 `IDENTIFIER_UNAVAILABLE`, no backend call. An
+  edit's 422 `import_invalid` shows the backend's own reasons, which it puts in `error.message`: `BackendError` gained
+  `detail` for that (additive; copied module, see below). A lock is 503 `BUSY`; a conflict is 409 and reloads in place.
+  - Desk (`components/IdentifierDesk.tsx`, `lib/identifier-desk.ts`): questions by rank; rank and answers editable with
+    the backend's payload rules as pre-checks; the client file name is read-only; photo link from the published photos
+    with a preview; retire and restore. Questions on one client photo (`ai-a11`/`ai-a11-2`, `ai-a18`/`ai-a18-2`) are
+    marked, and one backend photo linked to two different client photos is flagged "Check photo". The photo picker and
+    preview moved to `components/PhotoLink.tsx` (shared with Military; the preview's warning is worded per desk).
+  - The workspace has an `identifier` source; the Overview's Aircraft Identifier shortcut counts the backend questions.
+    The view-only demo account still sees the sample drafts (D1 sample records), as before.
+  - Not built (open question in A3_PLAN): the backend's separate editorial kind `identifier` (W1). Ask before adding a
+    second Identifier view.
+  - Independent review (code-reviewer agent): ship; its four minor findings are fixed (two more malformed-edit cases,
+    unreadable roles and a non-admin on these routes, the section erroring on its own source, the preview wording).
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 388/388 (new
+    `tests/identifier-routes.test.mjs`); `npm run build` and `npm run build:node` complete; eslint: no new findings. Browser
+    walk on the Vite dev server with the auth emulator and `ROLES_SOURCE=backend` against the LOCAL FAKE backend (scratch
+    script; Identifier rows from the Backend's frozen `identifier-v1` fixture): 31 questions, the ai-a11 pair marked; link
+    a photo, then save a rank change on the returned version (2 → 3), retire; a change made behind the desk gives the
+    conflict notice and reloads. Not checked: the real Backend, a real photo preview, Google sign-in. Nothing deployed.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0 and A3.1 (Military) are done;
-      next Identifier on `content/identifier` (A3.2), Plane of the Day, audit, then removing D1.
+- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military) and A3.2
+      (Aircraft Identifier) are done; next Plane of the Day (A3.3), audit, then removing D1.
+- [ ] Ask (user): keep the backend's editorial `identifier` kind (W1) as a second Identifier view, or drop it?
 - [ ] Walk the Military desk against the real Backend (dev data: `mil-a1` … `mil-a31`) and on `dev.admin.` after deploy.
-- [ ] Website session: `lib/request/backend.ts` gained `BackendError.errors` (additive) here; copy it there when the
-      website needs the backend's reasons.
+- [ ] Website session: `lib/request/backend.ts` gained `BackendError.errors` and `BackendError.detail` (both additive)
+      here; copy them there when the website needs the backend's reasons.
 - [ ] Walk Media, Store and Users with `ROLES_SOURCE=backend` against a local Backend now that A3.0 lets them load.
 - [ ] Open question (Backend/user), still open after A3.1: Military `rights_checked` needs a permission note and
       attribution, and `content_prepared` an https `referenceUrl`. Josh's sheet has no reference URL and the dev waiver

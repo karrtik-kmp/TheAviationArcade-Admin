@@ -18,7 +18,8 @@ const results = (overrides = {}) => ({
   submissions: ok({ submissions: [] }),
   content: ok({ records: [] }),
   audit: ok({ events: [] }),
-  military: ok({ packages: [] }),
+  military: ok({ items: [] }),
+  identifier: ok({ items: [] }),
   ...overrides,
 });
 const allD1Down = results({ submissions: d1Down, content: d1Down, audit: d1Down, military: d1Down });
@@ -34,6 +35,8 @@ test("every D1 source failing leaves the backend desks reachable", () => {
 
 test("a desk shows its own source's error, with the server's message", () => {
   const states = sourceStates(results({ content: d1Down }));
+  assert.deepEqual(sectionView("Aircraft Identifier", states), { view: "ready", unavailable: [] }, "on the backend since A3.2");
+  assert.equal(sectionView("Aircraft Identifier", sourceStates(results({ identifier: d1Down }))).view, "error");
   const view = sectionView("Plane of the Day", states);
   assert.equal(view.view, "error");
   assert.deepEqual(view.errors.map(({ source }) => source), ["content"]);
@@ -82,5 +85,5 @@ test("network failures and bodies without a message get a per-source fallback", 
 });
 
 test("every source is listed once", () => {
-  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "content", "military", "submissions"]);
+  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "content", "identifier", "military", "submissions"]);
 });

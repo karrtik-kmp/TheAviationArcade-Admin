@@ -36,6 +36,8 @@ import { useDevDemoWaiver } from "@/components/PublicSite";
 import { Brand, ThemeToggle } from "@/components/AdminShell";
 import { AccountActions } from "@/components/AccessGate";
 import { MilitaryWorkspace, type ReleaseAction } from "@/components/MilitaryWorkspace";
+import { IdentifierDesk, type IdentifierChange } from "@/components/IdentifierDesk";
+import type { IdentifierItem } from "@/lib/identifier-desk";
 import { MediaDesk } from "@/components/MediaDesk";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
@@ -220,6 +222,8 @@ export function AdminApp({
   const [military, setMilitary] = useState<MilitaryDesk>(emptyMilitary);
   /** Counts Military reloads, so an older answer that lands late never replaces a newer one. */
   const militaryReloads = useRef(0);
+  const [identifier, setIdentifier] = useState<IdentifierItem[]>([]);
+  const identifierReloads = useRef(0);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [sources, setSources] = useState<SourceStates>(() =>
     allSources({ state: "loading" }),
@@ -242,6 +246,7 @@ export function AdminApp({
     setSubmissions([]);
     setRecords([]);
     setMilitary(emptyMilitary);
+    setIdentifier([]);
     setEvents([]);
     setSelectedId("");
     setRecordId("");
@@ -261,6 +266,17 @@ export function AdminApp({
     },
     [clearPrivateData],
   );
+
+  /** The Aircraft Identifier desk's read (A3.2). An item never goes back to an older version than one already shown. */
+  function applyIdentifier(body: Record<string, unknown>) {
+    const items = Array.isArray(body.items) ? (body.items as IdentifierItem[]) : [];
+    setIdentifier((previous) =>
+      items.map((item) => {
+        const known = previous.find((each) => each.id === item.id);
+        return known && known.version > item.version ? known : item;
+      }),
+    );
+  }
 
   const fetchAll = useCallback(async () => {
     const session = accountRef.current;
@@ -329,6 +345,7 @@ export function AdminApp({
         : [],
     );
     applyMilitary(body("military"));
+    applyIdentifier(body("identifier"));
     setEvents(
       Array.isArray(auditBody.events)
         ? (auditBody.events as AuditEvent[])
@@ -619,13 +636,26 @@ export function AdminApp({
    * after a conflict, an approval and a release step. Returns "" when the desk was reloaded (or a newer reload took
    * over), else why not.
    */
-  async function reloadMilitary(): Promise<string> {
+  function reloadMilitary(): Promise<string> {
+    return reloadDesk("/api/admin/military", "Military", militaryReloads, applyMilitary);
+  }
+
+  /**
+   * Reloads one backend desk in place. Answers that belong to an earlier account check, or that a newer reload of the
+   * same desk overtook, are dropped. Returns "" when the desk was reloaded (or a newer reload took over), else why not.
+   */
+  async function reloadDesk(
+    url: string,
+    name: string,
+    reloads: { current: number },
+    apply: (body: Record<string, unknown>) => void,
+  ): Promise<string> {
     const generation = drafts.generation();
-    const sequence = ++militaryReloads.current;
+    const sequence = ++reloads.current;
     let status = 0;
     let body: Record<string, unknown> = {};
     try {
-      const response = await fetch(sitePath("/api/admin/military"), {
+      const response = await fetch(sitePath(url), {
         cache: "no-store",
         headers: accountHeaders(user.sessionKey),
       });
@@ -640,11 +670,70 @@ export function AdminApp({
       return "";
     }
     // A newer reload was started after this one: its answer is the one to show.
-    if (sequence !== militaryReloads.current) return "";
+    if (sequence !== reloads.current) return "";
     if (status < 200 || status >= 300)
-      return `The Military desk could not reload, so it may not show the latest state. ${typeof body.error === "string" ? body.error : "Reload the page."}`;
-    applyMilitary(body);
+      return `The ${name} desk could not reload, so it may not show the latest state. ${typeof body.error === "string" ? body.error : "Reload the page."}`;
+    apply(body);
     return "";
+  }
+
+  /** The editor opened a question: later writes are based on this version. */
+  function openIdentifier(id: string, version: number) {
+    drafts.open(`identifier:${id}`, version);
+  }
+
+  /** Edits, retires, restores or relinks one question. A conflict reloads the desk in place and keeps the form. */
+  async function changeIdentifier(item: IdentifierItem, change: IdentifierChange): Promise<IdentifierItem | null> {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const path = `/api/admin/identifier/${encodeURIComponent(item.id)}`;
+      const adopt = (body: Record<string, unknown>) => (body.item as IdentifierItem | undefined)?.version;
+      const key = `identifier:${item.id}`;
+      const outcome =
+        change.kind === "edit"
+          ? await drafts.save(key, "PATCH", path, {
+              rank: change.rank,
+              data: { answer: change.answer, wrong: change.wrong, sourceFile: item.data.sourceFile },
+            }, adopt)
+          : change.kind === "media"
+            ? await drafts.save(key, "PUT", `${path}/media`, { mediaId: change.mediaId }, adopt, "expectedVersion")
+            : await drafts.save(key, "POST", `${path}/${change.kind}`, {}, adopt);
+      if (outcome.kind !== "ok") {
+        if (outcome.kind !== "conflict") {
+          failed(outcome);
+          return null;
+        }
+        setNotice({
+          kind: "error",
+          text: `${outcome.message} Your form has been kept and the list reloaded. Select the question again to load its latest version; that replaces your unsaved changes.`,
+        });
+        void reloadDesk("/api/admin/identifier", "Aircraft Identifier", identifierReloads, applyIdentifier).then(
+          (problem) => problem && setNotice({ kind: "error", text: `${outcome.message} ${problem}` }),
+        );
+        return null;
+      }
+      const updated = outcome.body.item as IdentifierItem;
+      setIdentifier((previous) => previous.map((each) => (each.id === updated.id ? updated : each)));
+      setNotice({
+        kind: "success",
+        text:
+          outcome.body.changed === false
+            ? "Nothing changed, so nothing was saved."
+            : change.kind === "edit"
+              ? `${updated.id} saved.`
+              : change.kind === "media"
+                ? updated.mediaId
+                  ? `${updated.id} now shows photo ${updated.mediaId}.`
+                  : `${updated.id} has no photo linked now.`
+                : change.kind === "retire"
+                  ? `${updated.id} retired. It is kept but no longer dealt.`
+                  : `${updated.id} restored.`,
+      });
+      return updated;
+    } finally {
+      setBusy(false);
+    }
   }
 
   /** A Military request that did not succeed. A conflict reloads the desk; an open question keeps its form. */
@@ -755,6 +844,7 @@ export function AdminApp({
   }
 
   const view = sectionView(section, sources);
+  // The demo preview keeps the sample Aircraft Identifier drafts; staff use the backend desk (A3.2).
   const contentKind = section === "Aircraft Identifier" ? "identifier" : "potd";
   const contentRecords = records.filter(
     (record) =>
@@ -986,6 +1076,11 @@ export function AdminApp({
                       loadingDemo={busy}
                       readOnly={readOnly}
                       unavailable={view.unavailable.map(({ source }) => source)}
+                      identifierCount={
+                        readOnly
+                          ? records.filter((item) => item.kind === "identifier" && item.status !== "archived").length
+                          : identifier.filter((item) => item.status !== "retired").length
+                      }
                     />
                   )}
                   {section === "Submissions" && (
@@ -1008,7 +1103,18 @@ export function AdminApp({
                       busy={busy}
                     />
                   )}
-                  {(section === "Aircraft Identifier" ||
+                  {section === "Aircraft Identifier" && !readOnly && (
+                    <IdentifierDesk
+                      items={identifier}
+                      sessionKey={user.sessionKey}
+                      busy={busy}
+                      onOpen={openIdentifier}
+                      onChange={changeIdentifier}
+                      onBlocked={blockAccess}
+                      onOpenMedia={manageRoles ? () => setSection("Media") : undefined}
+                    />
+                  )}
+                  {((section === "Aircraft Identifier" && readOnly) ||
                     section === "Plane of the Day") && (
                     <ContentWorkspace
                       kind={contentKind}
@@ -1071,6 +1177,7 @@ function Overview({
   loadingDemo,
   readOnly,
   unavailable,
+  identifierCount,
 }: {
   submissions: Submission[];
   records: EditorialRecord[];
@@ -1083,6 +1190,8 @@ function Overview({
   loadingDemo: boolean;
   readOnly: boolean;
   unavailable: WorkspaceSource[];
+  /** Aircraft Identifier questions (the backend desk), or the demo's sample drafts in the view-only preview. */
+  identifierCount: number;
 }) {
   const missing = (source: WorkspaceSource) => unavailable.includes(source);
   const count = (source: WorkspaceSource, value: number) =>
@@ -1233,14 +1342,9 @@ function Overview({
             <span>
               <b>Aircraft Identifier</b>
               <small>
-                {missing("content")
+                {missing(readOnly ? "content" : "identifier")
                   ? "Could not load"
-                  : `${
-                      records.filter(
-                        (item) =>
-                          item.kind === "identifier" && item.status !== "archived",
-                      ).length
-                    } records`}
+                  : `${identifierCount} ${readOnly ? "records" : "questions"}`}
               </small>
             </span>
             <span>→</span>

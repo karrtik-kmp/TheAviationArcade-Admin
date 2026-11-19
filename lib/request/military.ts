@@ -72,20 +72,25 @@ const militaryDataSchema = z
   })
   .strict();
 
+/** openapi `ContentItem` with a module's own payload (`data` is module-specific; every other key is shared). */
+export function contentItemSchema<D extends z.ZodTypeAny>(data: D) {
+  return z
+    .object({
+      id: z.string().min(1).max(64),
+      rank,
+      status: z.enum(["approved", "retired"]),
+      source: z.enum(["client_sheet", "admin"]),
+      version: positive,
+      data,
+      mediaId: mediaId.nullable(),
+      preparation: preparationSchema.nullable(),
+      updatedAt: isoDate,
+    })
+    .strict();
+}
+
 /** openapi `ContentItem`, for the Military module. */
-export const militaryItemSchema = z
-  .object({
-    id: z.string().min(1).max(64),
-    rank,
-    status: z.enum(["approved", "retired"]),
-    source: z.enum(["client_sheet", "admin"]),
-    version: positive,
-    data: militaryDataSchema,
-    mediaId: mediaId.nullable(),
-    preparation: preparationSchema.nullable(),
-    updatedAt: isoDate,
-  })
-  .strict();
+export const militaryItemSchema = contentItemSchema(militaryDataSchema);
 export type MilitaryItem = z.infer<typeof militaryItemSchema>;
 
 /** openapi `ContentItemList`. */

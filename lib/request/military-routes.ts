@@ -136,7 +136,7 @@ async function viaBackend<T>(schema: ZodType<T>, step: Step, run: () => Promise<
 }
 
 /** Reads a JSON body, cancelling as soon as it passes the limit; a lying Content-Length cannot get past this. */
-async function jsonBody(ctx: Ctx): Promise<unknown> {
+export async function jsonBody(ctx: Ctx): Promise<unknown> {
   const declared = ctx.request.headers.get("content-length");
   if (declared !== null && /^[0-9]{1,15}$/.test(declared.trim()) && Number(declared) > MAX_JSON_BYTES) throw tooLarge();
   const reader = ctx.request.body?.getReader();

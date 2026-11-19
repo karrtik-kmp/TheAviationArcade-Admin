@@ -18,6 +18,7 @@ import { route, type Route, type RouteContext } from "./router.ts";
 import { roleRoutes } from "./role-routes.ts";
 import { mediaRoutes } from "./media-routes.ts";
 import { militaryRoutes } from "./military-routes.ts";
+import { identifierRoutes } from "./identifier-routes.ts";
 import { storeRoutes } from "./store-routes.ts";
 import { storePurchaseRoutes } from "./store-purchase-routes.ts";
 
@@ -146,6 +147,7 @@ export const routes: Route[] = [
   route({ method: "GET", path: "admin/audit", audience: "staff", run: auditEvents }),
   ...roleRoutes,
   ...militaryRoutes,
+  ...identifierRoutes,
   ...mediaRoutes,
   ...storeRoutes,
   ...storePurchaseRoutes,

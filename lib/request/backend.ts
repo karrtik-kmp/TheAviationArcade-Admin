@@ -25,12 +25,18 @@ export class BackendError extends Error {
   retryAfter?: number;
   /** Every reason the backend listed (`errors[]` on a refusal), plain English for staff; [] when absent. */
   errors: string[];
-  constructor(status: number, code: string, retryAfter?: number, errors: string[] = []) {
+  /**
+   * The backend's own `error.message` (plain English, at most 1000 characters; "" when absent). Only some refusals put
+   * their reasons there (a content edit's `import_invalid`); a route passes it on only where the contract says so.
+   */
+  detail: string;
+  constructor(status: number, code: string, retryAfter?: number, errors: string[] = [], detail = "") {
     super(`Game backend answered ${status}${code ? ` ${code}` : ""}.`);
     this.status = status;
     this.code = code;
     this.retryAfter = retryAfter;
     this.errors = errors;
+    this.detail = detail;
   }
 }
 
@@ -110,13 +116,22 @@ export function backendClient(
     }
     const parsed: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const code =
+      const error =
         parsed && typeof parsed === "object" && "error" in parsed && parsed.error && typeof parsed.error === "object"
-          ? String((parsed.error as { code?: unknown }).code ?? "")
-          : "";
+          ? (parsed.error as { code?: unknown; message?: unknown })
+          : null;
+      const code = error ? String(error.code ?? "") : "";
+      const message = typeof error?.message === "string" ? error.message.trim() : "";
+      const detail = message.length > 1000 ? `${message.slice(0, 999)}…` : message;
       const header = response.headers.get("Retry-After");
       const retry = header === null || header.trim() === "" ? NaN : Number(header);
-      throw new BackendError(response.status, code, Number.isFinite(retry) && retry >= 0 ? retry : undefined, refusalReasons(parsed));
+      throw new BackendError(
+        response.status,
+        code,
+        Number.isFinite(retry) && retry >= 0 ? retry : undefined,
+        refusalReasons(parsed),
+        detail,
+      );
     }
     return { status: response.status, body: parsed };
   }

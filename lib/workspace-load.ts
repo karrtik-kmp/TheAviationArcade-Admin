@@ -4,27 +4,29 @@
  * nothing here (Media, Store, Users load their own data from the backend) never wait on these sources.
  */
 
-export type WorkspaceSource = "submissions" | "content" | "audit" | "military";
+export type WorkspaceSource = "submissions" | "content" | "audit" | "military" | "identifier";
 export type SourceState =
   | { state: "loading" }
   | { state: "ready" }
   | { state: "error"; error: string };
 export type SourceStates = Record<WorkspaceSource, SourceState>;
 
-export const workspaceSources: readonly WorkspaceSource[] = ["submissions", "content", "audit", "military"];
+export const workspaceSources: readonly WorkspaceSource[] = ["submissions", "content", "audit", "military", "identifier"];
 
 export const sourceUrl: Record<WorkspaceSource, string> = {
   submissions: "/api/admin/submissions",
   content: "/api/admin/content",
   audit: "/api/admin/audit",
   military: "/api/admin/military",
+  identifier: "/api/admin/identifier",
 };
 
 export const sourceLabel: Record<WorkspaceSource, string> = {
   submissions: "Submissions",
-  content: "Aircraft Identifier and Plane of the Day",
+  content: "Plane of the Day",
   audit: "Activity",
   military: "Military readiness",
+  identifier: "Aircraft Identifier",
 };
 
 const fallbackError: Record<WorkspaceSource, string> = {
@@ -32,13 +34,15 @@ const fallbackError: Record<WorkspaceSource, string> = {
   content: "Could not load content records.",
   audit: "Could not load the activity log.",
   military: "Could not load Military readiness.",
+  identifier: "Could not load the Aircraft Identifier questions.",
 };
 
 /** Which sources each workspace section reads. Sections not listed read none. */
 const sectionNeeds: Record<string, readonly WorkspaceSource[]> = {
-  Overview: ["submissions", "content", "audit"],
+  Overview: ["submissions", "content", "audit", "identifier"],
   Submissions: ["submissions"],
-  "Aircraft Identifier": ["content"],
+  // On the game backend since A3.2 (the view-only demo shows sample drafts and loads nothing).
+  "Aircraft Identifier": ["identifier"],
   "Plane of the Day": ["content"],
   // On the game backend since A3.1; its photos come from the Media routes, which the desk reads itself.
   "Military readiness": ["military"],
@@ -50,7 +54,7 @@ export function sourcesFor(section: string): readonly WorkspaceSource[] {
 }
 
 export function allSources(state: SourceState): SourceStates {
-  return { submissions: state, content: state, audit: state, military: state };
+  return { submissions: state, content: state, audit: state, military: state, identifier: state };
 }
 
 /** One source's response: an HTTP status and parsed body, or a network failure (`status: 0`). */
