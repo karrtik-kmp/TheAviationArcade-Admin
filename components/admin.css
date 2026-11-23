@@ -379,11 +379,7 @@
   .admin-heading h1 {
     font-size: 39px;
   }
-  .admin-stats {
-    grid-template-columns: 1fr 1fr;
-  }
   .admin-stat:nth-child(3) {
-    border-left: 0;
     border-top: 1px solid var(--line);
   }
   .admin-stat:nth-child(4) {
@@ -680,6 +676,10 @@
   font: inherit;
   font-size: 10px;
   cursor: pointer;
+  /* Keep "View all →" on one line; a flex header otherwise squeezes it into a column. */
+  flex: none;
+  white-space: nowrap;
+  min-height: 24px;
 }
 .admin-text-button span {
   margin-left: 5px;
@@ -774,6 +774,9 @@
   overflow: hidden;
 }
 .admin-table-scroll {
+  /* Containing block for absolutely positioned children (.sr-only header labels), so they
+     are clipped here instead of widening the whole page. */
+  position: relative;
   width: 100%;
   overflow: auto;
 }
@@ -875,6 +878,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* "Close question" and friends: at least a 24px tap target (WCAG 2.5.8). */
+  min-height: 24px;
   border: 0;
   background: transparent;
   color: #a93825;
@@ -1024,6 +1029,10 @@
 .editor-version {
   color: var(--muted, #68757b);
   font-size: 10px;
+}
+/* A short count ("0 / 31 approved") beside a heading: never break it over lines. */
+.admin-total {
+  white-space: nowrap;
 }
 .content-toolbar {
   justify-content: space-between;
@@ -1308,6 +1317,18 @@
   }
 }
 @media (max-width: 1199px) {
+  .admin-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  /* Keep "Airplane Games" on one line in the narrower sidebar. */
+  .admin-sidebar .brand img {
+    width: 32px;
+    height: 32px;
+  }
+  .admin-sidebar .brand-name {
+    font-size: 15px;
+  }
+  .admin-split,
   .submissions-split,
   .content-split {
     grid-template-columns: minmax(0, 1fr);
@@ -1319,8 +1340,23 @@
     min-width: 660px;
   }
 }
+@media (max-width: 1023px) {
+  .admin-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-stat:nth-child(3) {
+    border-left: 0;
+  }
+  .admin-stat:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+}
 @media (max-width: 767px) {
   .admin-layout::before {
+    display: none;
+  }
+  /* The sidebar is a sticky top bar on phones; the footer note only eats screen height. */
+  .admin-side-bottom {
     display: none;
   }
   .admin-sidebar {
@@ -2109,8 +2145,10 @@
   color: var(--muted);
   font-weight: 400;
 }
+/* break-word, not anywhere: "anywhere" lets auto table layout shrink a column to one
+   character, which broke "First Class Pass" mid-word. The table scrolls sideways instead. */
 .admin-table.store-table td {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .admin-table.store-table td[data-label="Product id"] small {
   display: block;

@@ -154,6 +154,23 @@
     Swagger at `/api/docs/`), API 0.27.3. 0.27.2 and 0.27.3 change only `servers`, so A3.0–A3.2 match it. Local walks
     still use the demo project, which the real backend does not accept.
 
+- 2026-11-23: Cross-device layout pass on the workspace (320, 768, 1024, 1440px).
+  - `refactor(admin)` (`7705c21`): every workspace rule now lives in `components/admin.css` only; `globals.css` had
+    restated the same selectors and admin.css, loading later, cancelled its breakpoints. Pure move plus removal of
+    provably overridden declarations; `tests/admin-css.test.mjs` guards it.
+  - Fixes: Overview panels stack below 1200px and stats go 2×2 below 1024px; 200px tablet sidebar (brand at 15px so
+    it stays on one line); phone header drops the sidebar footer (141px → 68px); "View all →" no longer wraps into a
+    column; the Store table no longer widens the page at 768px (`.admin-table-scroll` contains its `.sr-only` header
+    label, also on Users) or breaks words mid-word (`overflow-wrap: break-word`); the phone section strip scrolls to
+    the current section (`AdminApp.tsx`); 24px minimum for `.admin-back` / `.admin-text-button`; "0 / 31 approved"
+    stays on one line.
+  - Verification (local, Windows): Auth emulator + local Backend (`ROLES_SOURCE=backend`, a local test admin, the
+    client's Military and Aircraft Identifier sheets, 31 each, and 6 seeded store products). Swept every section with
+    a script (page overflow, off-screen elements, small targets) and by eye, including both question editors and the
+    New product form. Computed styles were compared before and after the refactor. `npm test` 389/389, typecheck
+    clean, `npm run build` complete. Not checked: Media with photos (needs Bunny), Submissions / Plane of the Day /
+    Activity (D1 desks answer 503), real iOS/Android devices. Nothing deployed.
+
 ## Next
 
 - [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military) and A3.2

@@ -217,6 +217,13 @@ export function AdminApp({
   const fluentTheme = resolvedTheme === "dark" ? webDarkTheme : webLightTheme;
   const brandBackground = resolvedTheme === "dark" ? "#c64731" : "#a93825";
   const [section, setSection] = useState<Section>("Overview");
+  const navRef = useRef<HTMLElement>(null);
+  // On phones the sections are a horizontal strip: keep the current one in view.
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [section]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [records, setRecords] = useState<EditorialRecord[]>([]);
   const [military, setMilitary] = useState<MilitaryDesk>(emptyMilitary);
@@ -942,7 +949,7 @@ export function AdminApp({
                 {readOnly ? "Demo preview · view only" : "Editorial workspace"}
               </span>
             </div>
-            <nav aria-label="Admin sections" className="admin-nav">
+            <nav ref={navRef} aria-label="Admin sections" className="admin-nav">
               <span className="admin-nav-caption">WORKSPACE</span>
               {(readOnly
                 ? navItems.filter(
