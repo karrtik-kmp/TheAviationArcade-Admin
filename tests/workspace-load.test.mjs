@@ -20,6 +20,7 @@ const results = (overrides = {}) => ({
   audit: ok({ events: [] }),
   military: ok({ items: [] }),
   identifier: ok({ items: [] }),
+  potd: ok({ items: [] }),
   ...overrides,
 });
 const allD1Down = results({ submissions: d1Down, content: d1Down, audit: d1Down, military: d1Down });
@@ -37,9 +38,10 @@ test("a desk shows its own source's error, with the server's message", () => {
   const states = sourceStates(results({ content: d1Down }));
   assert.deepEqual(sectionView("Aircraft Identifier", states), { view: "ready", unavailable: [] }, "on the backend since A3.2");
   assert.equal(sectionView("Aircraft Identifier", sourceStates(results({ identifier: d1Down }))).view, "error");
-  const view = sectionView("Plane of the Day", states);
+  assert.deepEqual(sectionView("Plane of the Day", states), { view: "ready", unavailable: [] }, "on the backend since A3.3");
+  const view = sectionView("Plane of the Day", sourceStates(results({ potd: d1Down })));
   assert.equal(view.view, "error");
-  assert.deepEqual(view.errors.map(({ source }) => source), ["content"]);
+  assert.deepEqual(view.errors.map(({ source }) => source), ["potd"]);
   assert.equal(view.errors[0].error, d1Down.body.error);
   assert.deepEqual(sectionView("Submissions", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Activity", states), { view: "ready", unavailable: [] });
@@ -85,5 +87,5 @@ test("network failures and bodies without a message get a per-source fallback", 
 });
 
 test("every source is listed once", () => {
-  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "content", "identifier", "military", "submissions"]);
+  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "content", "identifier", "military", "potd", "submissions"]);
 });

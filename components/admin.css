@@ -2406,3 +2406,8 @@
     white-space: nowrap;
   }
 }
+
+/* Plane of the Day (A3.3): the new-draft panel under the list. */
+.potd-create {
+  margin-top: 16px;
+}

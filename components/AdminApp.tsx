@@ -42,6 +42,8 @@ import { MediaDesk } from "@/components/MediaDesk";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
 import { ActivityDesk } from "@/components/ActivityDesk";
+import { PotdDesk } from "@/components/PotdDesk";
+import { saveBody, type PotdForm, type PotdItem } from "@/lib/potd-desk";
 import type { AuditEvent } from "@/lib/audit-desk";
 import "@/components/admin.css";
 import {
@@ -227,6 +229,8 @@ export function AdminApp({
   const militaryReloads = useRef(0);
   const [identifier, setIdentifier] = useState<IdentifierItem[]>([]);
   const identifierReloads = useRef(0);
+  const [potd, setPotd] = useState<PotdItem[]>([]);
+  const potdReloads = useRef(0);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [sources, setSources] = useState<SourceStates>(() =>
     allSources({ state: "loading" }),
@@ -250,6 +254,7 @@ export function AdminApp({
     setRecords([]);
     setMilitary(emptyMilitary);
     setIdentifier([]);
+    setPotd([]);
     setEvents([]);
     setSelectedId("");
     setRecordId("");
@@ -274,6 +279,17 @@ export function AdminApp({
   function applyIdentifier(body: Record<string, unknown>) {
     const items = Array.isArray(body.items) ? (body.items as IdentifierItem[]) : [];
     setIdentifier((previous) =>
+      items.map((item) => {
+        const known = previous.find((each) => each.id === item.id);
+        return known && known.version > item.version ? known : item;
+      }),
+    );
+  }
+
+  /** The Plane of the Day desk's read (A3.3). An item never goes back to an older version than one already shown. */
+  function applyPotd(body: Record<string, unknown>) {
+    const items = Array.isArray(body.items) ? (body.items as PotdItem[]) : [];
+    setPotd((previous) =>
       items.map((item) => {
         const known = previous.find((each) => each.id === item.id);
         return known && known.version > item.version ? known : item;
@@ -349,6 +365,7 @@ export function AdminApp({
     );
     applyMilitary(body("military"));
     applyIdentifier(body("identifier"));
+    applyPotd(body("potd"));
     setEvents(
       Array.isArray(auditBody.events)
         ? (auditBody.events as AuditEvent[])
@@ -739,6 +756,75 @@ export function AdminApp({
     }
   }
 
+  /** The editor opened a Plane of the Day item: its save is based on this version. */
+  function openPotd(id: string, version: number) {
+    drafts.open(`potd:${id}`, version);
+  }
+
+  /** Saves an item's whole editable state. A conflict reloads the desk in place and keeps the form. */
+  async function savePotd(item: PotdItem, form: PotdForm): Promise<PotdItem | null> {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const outcome = await drafts.save(
+        `potd:${item.id}`,
+        "PUT",
+        `/api/admin/plane-of-the-day/${encodeURIComponent(item.id)}`,
+        saveBody(form),
+        (body) => (body.item as PotdItem | undefined)?.version,
+      );
+      if (outcome.kind !== "ok") {
+        if (outcome.kind !== "conflict") {
+          failed(outcome);
+          return null;
+        }
+        setNotice({
+          kind: "error",
+          text: `${outcome.message} Your form has been kept and the list reloaded. Select the item again to load its latest version; that replaces your unsaved changes.`,
+        });
+        void reloadDesk("/api/admin/plane-of-the-day", "Plane of the Day", potdReloads, applyPotd).then(
+          (problem) => problem && setNotice({ kind: "error", text: `${outcome.message} ${problem}` }),
+        );
+        return null;
+      }
+      const updated = outcome.body.item as PotdItem;
+      setPotd((previous) => previous.map((each) => (each.id === updated.id ? updated : each)));
+      setNotice({
+        kind: "success",
+        text:
+          outcome.body.changed === false
+            ? "Nothing changed, so nothing was saved."
+            : updated.status === "scheduled"
+              ? `${updated.id} is scheduled for ${updated.dateKey}.`
+              : updated.status === "published"
+                ? `${updated.id} is published for ${updated.dateKey}.`
+                : `${updated.id} saved as ${updated.status}.`,
+      });
+      return updated;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Creates a draft for a published photo. Nothing is prefilled; the backend checks the photo. */
+  async function createPotd(mediaId: string): Promise<PotdItem | null> {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const outcome = await drafts.request("POST", "/api/admin/plane-of-the-day", { mediaId });
+      if (outcome.kind !== "ok") {
+        failed(outcome);
+        return null;
+      }
+      const created = outcome.body.item as PotdItem;
+      setPotd((previous) => [created, ...previous.filter((each) => each.id !== created.id)]);
+      setNotice({ kind: "success", text: `Draft ${created.id} created for photo ${created.mediaId}.` });
+      return created;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** A Military request that did not succeed. A conflict reloads the desk; an open question keeps its form. */
   function militaryFailed(outcome: Outcome, what: "question" | "release") {
     if (outcome.kind !== "conflict") return failed(outcome);
@@ -1084,6 +1170,11 @@ export function AdminApp({
                           ? records.filter((item) => item.kind === "identifier" && item.status !== "archived").length
                           : identifier.filter((item) => item.status !== "retired").length
                       }
+                      potdCount={
+                        readOnly
+                          ? records.filter((item) => item.kind === "potd" && item.status !== "archived").length
+                          : potd.filter((item) => item.status !== "archived").length
+                      }
                     />
                   )}
                   {section === "Submissions" && (
@@ -1117,8 +1208,20 @@ export function AdminApp({
                       onOpenMedia={manageRoles ? () => setSection("Media") : undefined}
                     />
                   )}
-                  {((section === "Aircraft Identifier" && readOnly) ||
-                    section === "Plane of the Day") && (
+                  {section === "Plane of the Day" && !readOnly && (
+                    <PotdDesk
+                      items={potd}
+                      sessionKey={user.sessionKey}
+                      busy={busy}
+                      devDemoWaiver={devDemoWaiver}
+                      onOpen={openPotd}
+                      onSave={savePotd}
+                      onCreate={createPotd}
+                      onBlocked={blockAccess}
+                      onOpenMedia={manageRoles ? () => setSection("Media") : undefined}
+                    />
+                  )}
+                  {(section === "Aircraft Identifier" || section === "Plane of the Day") && readOnly && (
                     <ContentWorkspace
                       kind={contentKind}
                       records={contentRecords}
@@ -1181,6 +1284,7 @@ function Overview({
   readOnly,
   unavailable,
   identifierCount,
+  potdCount,
 }: {
   submissions: Submission[];
   records: EditorialRecord[];
@@ -1195,6 +1299,8 @@ function Overview({
   unavailable: WorkspaceSource[];
   /** Aircraft Identifier questions (the backend desk), or the demo's sample drafts in the view-only preview. */
   identifierCount: number;
+  /** Plane of the Day items that are not archived (the backend desk), or the demo's sample drafts. */
+  potdCount: number;
 }) {
   const missing = (source: WorkspaceSource) => unavailable.includes(source);
   const count = (source: WorkspaceSource, value: number) =>
@@ -1359,14 +1465,9 @@ function Overview({
             <span>
               <b>Plane of the Day</b>
               <small>
-                {missing("content")
+                {missing(readOnly ? "content" : "potd")
                   ? "Could not load"
-                  : `${
-                      records.filter(
-                        (item) =>
-                          item.kind === "potd" && item.status !== "archived",
-                      ).length
-                    } records`}
+                  : `${potdCount} ${readOnly ? "records" : "items"}`}
               </small>
             </span>
             <span>→</span>

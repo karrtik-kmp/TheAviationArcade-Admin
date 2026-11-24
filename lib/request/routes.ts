@@ -4,7 +4,7 @@
  * and checked the origin of mutations before a handler runs. Handlers parse the request and call
  * a store: photographer submissions under review (lib/submissions/d1.ts), the Aircraft Identifier
  * and Plane of the Day desks (ContentStore). The Military desk is on the game backend (military-routes.ts, A3.1), and so
- * is the Activity desk (audit-routes.ts, A3.4).
+ * are the Activity desk (audit-routes.ts, A3.4) and the Plane of the Day desk (potd-routes.ts, A3.3).
  * Relative imports only, so the table loads under `node --test`.
  */
 import { HttpError, respond } from "../errors.ts";
@@ -21,6 +21,7 @@ import { mediaRoutes } from "./media-routes.ts";
 import { militaryRoutes } from "./military-routes.ts";
 import { identifierRoutes } from "./identifier-routes.ts";
 import { auditRoutes } from "./audit-routes.ts";
+import { potdRoutes } from "./potd-routes.ts";
 import { storeRoutes } from "./store-routes.ts";
 import { storePurchaseRoutes } from "./store-purchase-routes.ts";
 
@@ -142,6 +143,7 @@ export const routes: Route[] = [
   ...militaryRoutes,
   ...identifierRoutes,
   ...auditRoutes,
+  ...potdRoutes,
   ...mediaRoutes,
   ...storeRoutes,
   ...storePurchaseRoutes,

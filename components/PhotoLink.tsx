@@ -86,12 +86,15 @@ export function LinkedPhoto({
   sessionKey,
   onBlocked,
   use,
+  subject = "question",
 }: {
   mediaId: string;
   sessionKey: string;
   onBlocked: (status: number) => void;
   /** What the published version is for on this desk: a Military release (with its crop check) or what players see. */
   use: "release" | "players";
+  /** What players see the photo on, for the warning: a question, or a Plane of the Day feature. */
+  subject?: "question" | "feature";
 }) {
   const [preview, setPreview] = useState<{ id: string; url: string; text: string; warning: string } | null>(null);
   useEffect(() => {
@@ -118,7 +121,7 @@ export function LinkedPhoto({
           published === null
             ? use === "release"
               ? "This photo is not published. A release needs a published photo."
-              : "This photo is not published, so players see no photo for this question."
+              : `This photo is not published, so players see no photo for this ${subject}.`
             : shown?.version !== published
               ? use === "release"
                 ? `This preview is unpublished draft version ${String(shown?.version)}; a release uses published version ${published}, which this desk cannot show. Check that version in the Media desk before ticking the crop check.`
@@ -136,7 +139,7 @@ export function LinkedPhoto({
     return () => {
       active = false;
     };
-  }, [mediaId, sessionKey, onBlocked, use]);
+  }, [mediaId, sessionKey, onBlocked, use, subject]);
   const current = preview?.id === mediaId ? preview : null;
   return (
     <div className="admin-field full military-photo">

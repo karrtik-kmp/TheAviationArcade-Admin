@@ -199,10 +199,41 @@
     clean, `npm run build` complete. Not checked: Media with photos (needs Bunny), Submissions / Plane of the Day /
     Activity (D1 desks answer 503), real iOS/Android devices. Nothing deployed.
 
+- 2026-11-24: A3.3, the Plane of the Day desk on the game backend (`docs/A3_PLAN.md`; editorial kind `plane-of-the-day`,
+  openapi 0.23.0, vendored API 0.28.0), plus the A3.4 branch merged (`feat/a3-desks`).
+  - Routes (`lib/request/potd-routes.ts`, strict parsers in `lib/request/potd.ts`): `GET admin/plane-of-the-day` lists
+    the items, `POST` creates a draft from a published photo (`{ mediaId }`, nothing prefilled), `PUT :id` saves the
+    whole editable state (`version`, `status`, `data`, `dateKey`). The backend kind becomes the Admin's `potd` at the
+    edge only. Mock roles: 404 `POTD_UNAVAILABLE`, no backend call. A 422 `content_invalid` passes `errors[]` on as given;
+    a save's 409 is a conflict and reloads the desk in place (form kept, base version not moved); a 409 on create or a
+    read is off the contract (502).
+  - Desk (`components/PotdDesk.tsx`, `lib/potd-desk.ts`): items by date (scheduled/published) then by last update;
+    status and date; every `EditorialData` field (the staff credit note is marked never public); exactly three
+    distractors; difficulty empty or a rank id. Pre-checks mirror the save route's rules: title 3+, description 15+,
+    https source, a date for scheduled/published, instagram handle or https link, a real calendar date. The dev waiver
+    allows only an EMPTY source; a live item without one reads "No source (dev demo)". The empty state is the plan's
+    text. A new workspace source `potd`; the Overview shortcut counts backend items. The view-only demo keeps the
+    sample drafts. `LinkedPhoto` takes a `subject` so its warning says "feature" here.
+  - Recovery: the A3.3 worktree (`claude/a3-3-plane-of-the-day-2a2316`) had a zeroed git index and its edits to
+    `routes.ts`, `rules.ts` and `workspace-load.ts` were all-NUL files (the failing H: drive); `potd.ts` and
+    `potd-routes.ts` were intact and are used as found. The lost edits were rewritten; `rules.ts` is unchanged (the
+    desk's rules live in `lib/potd-desk.ts`). That worktree is left as it was.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 410/410 (new
+    `tests/potd-routes.test.mjs`, 11 tests: contract keys/enums, gates with no backend call, what is sent, malformed
+    writes never leave, each refusal, the desk's rules and the waiver); `npm run build` and `npm run build:node`
+    complete; eslint on the new files clean. Browser walk on the Vite dev server (5179) with the auth emulator and
+    `ROLES_SOURCE=backend` against a LOCAL FAKE backend (scratch script, test data, not the real Backend): the
+    pre-checks list the four missing fields; schedule ed-1 for 2026-12-01 (version 1 → 2); a change made behind the
+    desk gives the conflict notice, reloads to version 3 and keeps the typed text; create a draft from med-2; Overview
+    counts 2 items; no page overflow at 375px. Not checked: the real Backend, a real photo preview, the dev waiver on
+    `dev.admin.`, Google sign-in. Nothing deployed.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military), A3.2
-      (Aircraft Identifier) and A3.4 (Activity) are done; Plane of the Day (A3.3) is in progress, then removing D1 (A3.5).
+- [ ] A3: move the desks off D1 onto the backend, per `docs/A3_PLAN.md`. A3.0 to A3.4 are done (A3.3 and A3.4 on
+      `feat/a3-desks`); next removing D1 (A3.5).
+- [ ] Walk the Plane of the Day desk against the real Backend's demo seed (`pod-4` … `pod-8`): publish the photos in
+      Media, re-run the seed, then schedule one; and with `DEV_DEMO_WAIVER=dev-demo` on `dev.admin.`.
 - [ ] Walk the Activity desk with `ROLES_SOURCE=backend` against a local or the dev backend: waiver flags on a waived
       photo publish and a Plane of the Day save, and the actor shown as a principal.
 - [ ] `scripts/military-qa.mjs` is stale since A3.1 (D1-shaped Military writes) and its audit check reads the old D1
