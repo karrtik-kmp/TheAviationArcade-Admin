@@ -154,6 +154,34 @@
     Swagger at `/api/docs/`), API 0.27.3. 0.27.2 and 0.27.3 change only `servers`, so A3.0–A3.2 match it. Local walks
     still use the demo project, which the real backend does not accept.
 
+- 2026-11-19: A3.4, the Activity desk on the game backend (`docs/A3_PLAN.md`; `GET /v1/admin/audit`, API 0.26.0,
+  unchanged through the vendored 0.28.0). `admin/audit` (`lib/request/audit-routes.ts`, parser in `lib/request/audit.ts`)
+  replaces the D1 `SELECT … FROM audit_events` route in `lib/request/routes.ts` (same path, so the workspace's `audit`
+  source is unchanged). It sends no query (the backend refuses any key) and passes the newest 50 events on as parsed:
+  `{ id, entity, action, actor, detail, createdAt }`, strict, the 31 actions pinned to the contract, `detail` an open
+  object. Mock roles: 404 `AUDIT_UNAVAILABLE`, no backend call; a 400 or 409 from the backend is off the contract (502).
+  - Desk (`components/ActivityDesk.tsx`, `lib/audit-desk.ts`; the old `Activity` in `AdminApp.tsx` is removed): action,
+    entity, the actor as the stored principal string with only its prefix kind (account, operator, system), never an
+    email or a name; the waiver flags `licenceWaived`, `factualSourceWaived` and `creditWaived` with the value the record
+    gives (looked for on every event's own detail keys, not inferred); the stored detail as JSON behind a disclosure;
+    the event id and time. No paging. A failed load shows the desk's own error (A3.0); the Overview's "Recent activity"
+    count reads "—" then.
+  - `creditWaived` is not named in the contract: it is a `media_import` detail key the Backend demo seed writes
+    (`"dev-demo"`). `detail` is open in the contract, so the desk shows it like the other two.
+  - Independent review (code-reviewer agent): ship after fixes, no blockers. Fixed: the workspace test no longer
+    hard-codes the other sources (merge-safe with A3.3); `actor` accepts any string (the contract gives no minimum; the
+    500-character caps stay as this website's bound, commented); list roles kept under `list-style: none`; each
+    "Detail" disclosure names its event for screen readers. Not changed: the date formatter duplicates `prettyDate`.
+  - Verification (local, Windows, Node 24.22.0): `npm run typecheck` clean; `npm test` 398/398 (new
+    `tests/audit-routes.test.mjs`, 10 tests: contract keys, actions, limits and no-query; mock, unreadable and
+    photographer gates with no backend call; events passed on unchanged with no email or name; off-contract answers;
+    each refusal; waiver and actor rules; the desk's own error); `npm run build` and `npm run build:node` complete
+    (all four re-run after the review fixes). Not walked in a browser, not against a
+    real or fake backend, no Google sign-in. Nothing deployed.
+  - Disk: the H: drive (TOSHIBA DT01ACA100) logged I/O errors and a S.M.A.R.T. failure prediction during this slice;
+    the user ruled to finish here. `node_modules` in this worktree is a junction to the main checkout's (same lockfile)
+    instead of a second install.
+
 - 2026-11-23: Cross-device layout pass on the workspace (320, 768, 1024, 1440px).
   - `refactor(admin)` (`7705c21`): every workspace rule now lives in `components/admin.css` only; `globals.css` had
     restated the same selectors and admin.css, loading later, cancelled its breakpoints. Pure move plus removal of
@@ -173,8 +201,12 @@
 
 ## Next
 
-- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military) and A3.2
-      (Aircraft Identifier) are done; next Plane of the Day (A3.3), audit, then removing D1.
+- [ ] A3: move the desks off D1 onto backend API 0.27.1, per `docs/A3_PLAN.md`. A3.0, A3.1 (Military), A3.2
+      (Aircraft Identifier) and A3.4 (Activity) are done; Plane of the Day (A3.3) is in progress, then removing D1 (A3.5).
+- [ ] Walk the Activity desk with `ROLES_SOURCE=backend` against a local or the dev backend: waiver flags on a waived
+      photo publish and a Plane of the Day save, and the actor shown as a principal.
+- [ ] `scripts/military-qa.mjs` is stale since A3.1 (D1-shaped Military writes) and its audit check reads the old D1
+      fields (`entity_id`, `military_approved`); rewrite it against the backend desks or remove it in A3.5.
 - [ ] Ask (user): keep the backend's editorial `identifier` kind (W1) as a second Identifier view, or drop it?
 - [ ] Walk the Military and Aircraft Identifier desks on `dev.admin.` against the live dev backend after deploy (the
       dev Admin's `GAME_API_BASE_URL` is the loopback backend, or `https://dev.api.playairplanegames.com/api`).
