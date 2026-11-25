@@ -215,6 +215,8 @@ export function AdminApp({
   const fluentTheme = resolvedTheme === "dark" ? webDarkTheme : webLightTheme;
   const brandBackground = resolvedTheme === "dark" ? "#c64731" : "#a93825";
   const [section, setSection] = useState<Section>("Overview");
+  // A Plane of the Day draft just made from the Submissions desk, opened on arrival.
+  const [potdArrival, setPotdArrival] = useState("");
   const navRef = useRef<HTMLElement>(null);
   // On phones the sections are a horizontal strip: keep the current one in view.
   useEffect(() => {
@@ -255,6 +257,8 @@ export function AdminApp({
     setMilitary(emptyMilitary);
     setIdentifier([]);
     setPotd([]);
+    // A draft opened on arrival belongs to the account that made it.
+    setPotdArrival("");
     setEvents([]);
     setSelectedId("");
     setRecordId("");
@@ -806,6 +810,37 @@ export function AdminApp({
     }
   }
 
+  /** What the Submissions desk offers once a photo is published there. */
+  function photoActions(item: { id: string }) {
+    return (
+      <>
+        <Button
+          appearance="primary"
+          disabled={busy}
+          onClick={async () => {
+            const created = await createPotd(item.id);
+            if (!created) return;
+            // Record the version saves are based on now, as opening it by hand would, then open it on arrival.
+            openPotd(created.id, created.version);
+            setPotdArrival(created.id);
+            setSection("Plane of the Day");
+          }}
+        >
+          Start a Plane of the Day draft
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setNotice({ kind: "success", text: `Photo ${item.id} is ready to link: open a question and choose it.` });
+            setSection("Aircraft Identifier");
+          }}
+        >
+          Link to an Aircraft Identifier question
+        </Button>
+      </>
+    );
+  }
+
   /** Creates a draft for a published photo. Nothing is prefilled; the backend checks the photo. */
   async function createPotd(mediaId: string): Promise<PotdItem | null> {
     setBusy(true);
@@ -1045,13 +1080,15 @@ export function AdminApp({
                   )
                 : navItems.filter(
                     ({ label }) =>
-                      manageRoles || (label !== "Users" && label !== "Media" && label !== "Store"),
+                      manageRoles ||
+                      (label !== "Users" && label !== "Media" && label !== "Store" && label !== "Submissions"),
                   )
               ).map(({ label, icon: Icon }) => (
                 <button
                   key={label}
                   onClick={() => {
                     setSection(label);
+                    setPotdArrival("");
                     setSelectedId("");
                     setRecordId("");
                     setNotice(null);
@@ -1177,24 +1214,21 @@ export function AdminApp({
                       }
                     />
                   )}
-                  {section === "Submissions" && (
-                    <Submissions
-                      submissions={filteredSubmissions}
-                      selected={selected}
-                      status={filterStatus}
-                      category={filterCategory}
-                      search={search}
-                      setStatus={setFilterStatus}
-                      setCategory={setFilterCategory}
-                      setSearch={setSearch}
-                      onOpen={openSubmission}
-                      checks={checks}
-                      setChecks={setChecks}
-                      note={reviewNote}
-                      setNote={setReviewNote}
-                      onReview={review}
-                      onCreate={createFromSubmission}
-                      busy={busy}
+                  {section === "Submissions" && !readOnly && manageRoles && (
+                    <MediaDesk
+                      key={user.sessionKey}
+                      sessionKey={user.sessionKey}
+                      onBlocked={blockAccess}
+                      only={["unverified", "changes"]}
+                      eyebrow="REVIEW"
+                      title="Submissions"
+                      intro="Photos waiting for review, from photographers and from staff. Check each one, correct its licence, and publish it."
+                      footnote="Only the photographer can state a photo's rights. Publishing freezes a version's licence and credit; the photo reaches a game once it is used for Plane of the Day or linked to a question."
+                      review={{
+                        afterPublish: photoActions,
+                        confirmNote:
+                          "Once it is published you can start a Plane of the Day draft from it or link it to an Aircraft Identifier question.",
+                      }}
                     />
                   )}
                   {section === "Aircraft Identifier" && !readOnly && (
@@ -1210,6 +1244,7 @@ export function AdminApp({
                   )}
                   {section === "Plane of the Day" && !readOnly && (
                     <PotdDesk
+                      key={user.sessionKey}
                       items={potd}
                       sessionKey={user.sessionKey}
                       busy={busy}
@@ -1219,6 +1254,7 @@ export function AdminApp({
                       onCreate={createPotd}
                       onBlocked={blockAccess}
                       onOpenMedia={manageRoles ? () => setSection("Media") : undefined}
+                      initialOpenId={potdArrival}
                     />
                   )}
                   {(section === "Aircraft Identifier" || section === "Plane of the Day") && readOnly && (
@@ -1252,7 +1288,13 @@ export function AdminApp({
                     />
                   )}
                   {section === "Media" && !readOnly && manageRoles && (
-                    <MediaDesk sessionKey={user.sessionKey} onBlocked={blockAccess} />
+                    <MediaDesk
+                      key={user.sessionKey}
+                      sessionKey={user.sessionKey}
+                      onBlocked={blockAccess}
+                      only={["published", "withdrawn", "all"]}
+                      intro="Every photo the game backend holds. New photos and waiting changes are reviewed in Submissions."
+                    />
                   )}
                   {section === "Store" && !readOnly && manageRoles && (
                     <StoreDesk sessionKey={user.sessionKey} onBlocked={blockAccess} />

@@ -3,7 +3,7 @@
 import { Button, Checkbox, Input, MessageBar, MessageBarBody, Textarea } from "@fluentui/react-components";
 import { ArrowClockwise, ArrowLeft, Images } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { FormEvent, RefObject } from "react";
+import type { FormEvent, ReactNode, RefObject } from "react";
 import { useDevDemoWaiver } from "@/components/PublicSite";
 import { accountHeaders } from "@/lib/account";
 import { licenceNameText } from "@/lib/dev-waiver";
@@ -19,8 +19,14 @@ import {
   mediaOutcome,
   publishBlockers,
   rebaseLicence,
+  reviewChecks,
+  reviewKey,
+  reviewReady,
+  ticksFor,
   rightsOf,
+  rightsOwnerOnly,
   splitEdit,
+  type ReviewTicks,
   type RightsState,
   type LicenceField,
   type LicenceValues,
@@ -36,7 +42,15 @@ import type { MediaDetail, MediaItem, MediaLicence, MediaList, MediaVersion } fr
  * does not put a photo in any game: linking to content is not done in this section.
  */
 
-type ViewKey = "unverified" | "changes" | "published" | "withdrawn" | "all";
+export type ViewKey = "unverified" | "changes" | "published" | "withdrawn" | "all";
+
+/** The Submissions desk's review mode: a checklist that must be complete to publish, and what to offer afterwards. */
+export type ReviewMode = {
+  /** Shown once a photo is published from this desk, next to the success notice. */
+  afterPublish?: (item: MediaItem) => ReactNode;
+  /** Replaces the confirmation's closing sentence. */
+  confirmNote?: string;
+};
 const views: { key: ViewKey; label: string; hint: string; query: string }[] = [
   { key: "unverified", label: "Unverified", hint: "New photos waiting for a first review", query: "state=unverified" },
   { key: "changes", label: "Changes waiting", hint: "Published photos whose draft is ahead of the live version", query: "pending=true" },
@@ -171,12 +185,17 @@ function DeskDetail({
   onBlocked,
   onBack,
   onChanged,
+  onWritten,
+  review,
 }: {
   sessionKey: string;
   id: string;
   onBlocked: (status: number) => void;
   onBack: () => void;
   onChanged: (item: MediaItem) => void;
+  /** After a save, publish or withdraw succeeded (the workspace refreshes its counts). */
+  onWritten?: () => void;
+  review?: ReviewMode;
 }) {
   const mounted = useMounted();
   // Dev Admin only: a missing licence name no longer blocks publishing here (lib/dev-waiver.ts).
@@ -198,6 +217,9 @@ function DeskDetail({
   const [confirm, setConfirm] = useState<"publish" | "withdraw" | null>(null);
   const [expired, setExpired] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Review mode: what the reviewer ticked, for one revision of this photo only.
+  const [checked, setChecked] = useState<ReviewTicks>({ key: "", ids: [] });
+  const [justPublished, setJustPublished] = useState<MediaItem | null>(null);
   // Only the newest load or write may change the screen.
   const generation = useRef(0);
   // Writes have their own generation, so a reload never swallows a save or publish answer.
@@ -266,6 +288,10 @@ function DeskDetail({
 
   const item = detail?.item ?? null;
   const base = item ? baseOf(item.draft) : null;
+  // The checks belong to what the reviewer saw: a new revision (an owner's edit, another admin's save) starts them again.
+  const checkKey = item ? reviewKey(item) : "";
+  const ticked = ticksFor(checked, checkKey);
+  const checklistDone = !review || reviewReady(checked, checkKey);
 
   function cancelConfirm() {
     const which = confirm;
@@ -306,6 +332,7 @@ function DeskDetail({
     if (mediaOutcome(reply.status, reply.code) === "ok") {
       setAuditNote("");
       setNotice({ kind: "success", text: "Licence details saved." });
+      onWritten?.();
       await reload(true);
     } else if (mediaOutcome(reply.status, reply.code) === "conflict") {
       // Someone changed it first: show the current licence and keep what was typed.
@@ -322,14 +349,15 @@ function DeskDetail({
     if (action === "publish") {
       const stopped = publishBlockers(item.draft.licence, rightsOf(item.draft), { devDemoWaiver });
       const unsaved = "changes" in licenceDiff(baseOf(item.draft), values, true);
-      if (unsaved || stopped.length > 0) {
+      if (unsaved || stopped.length > 0 || !checklistDone) {
         setConfirm(null);
         focusAfter.current = "notice";
         setNotice({
           kind: "error",
-          text:
-            !unsaved && stopped.every((b) => b.field === "rights")
-              ? "This version has no rights statement yet."
+          text: !checklistDone
+            ? "Finish the review checks before publishing."
+            : !unsaved && stopped.every((b) => b.field === "rights")
+              ? rightsOwnerOnly
               : "Publishing was stopped: the saved licence changed or has unsaved edits. Check it and try again.",
         });
         return;
@@ -347,6 +375,8 @@ function DeskDetail({
     focusAfter.current = "notice";
     const outcome = mediaOutcome(reply.status, reply.code);
     if (outcome === "ok") {
+      if (action === "publish") setJustPublished(item);
+      onWritten?.();
       setNotice({
         kind: "success",
         text:
@@ -409,7 +439,7 @@ function DeskDetail({
   const blockers = publishBlockers(base, rights, { devDemoWaiver });
   const dirty = "changes" in licenceDiff(base, values, true);
   const canPublish = item.draftVersion !== item.publishedVersion;
-  const publishBlocked = dirty || blockers.length > 0;
+  const publishBlocked = dirty || blockers.length > 0 || !checklistDone;
   const hasLink = !!preview.url;
   const versions = [...detail.versions].reverse();
   const frozenCredit = base.credit ? `credit ('${base.credit}')` : "no credit required";
@@ -418,6 +448,11 @@ function DeskDetail({
     <section className="admin-panel media-desk-detail" aria-labelledby={`${uid}-title`}>
       {heading}
       <NoticeBar notice={notice} onClose={() => setNotice(null)} noticeRef={noticeRef} />
+      {review?.afterPublish && justPublished && item?.id === justPublished.id && item.state === "published" && (
+        <div className="media-desk-after admin-actions" role="group" aria-label={`Use ${justPublished.id}`}>
+          {review.afterPublish(justPublished)}
+        </div>
+      )}
 
       <div className="media-desk-preview">
         {preview.url && !expired ? (
@@ -606,8 +641,27 @@ function DeskDetail({
                 Save or discard your licence edits before publishing. Publishing uses the saved licence.
               </p>
             )}
-            {blockers.length > 0 && (
-              <ul className="media-desk-blockers" aria-label="What stops publishing">
+            {review && (
+              <fieldset className="admin-fieldset media-desk-checks" disabled={busy || confirm !== null}>
+                <legend>Review checks</legend>
+                {reviewChecks.map((check) => (
+                  <Checkbox
+                    key={check.id}
+                    checked={ticked.includes(check.id)}
+                    label={check.label}
+                    onChange={(_, data) =>
+                      setChecked({
+                        key: checkKey,
+                        ids: data.checked ? [...ticked, check.id] : ticked.filter((one) => one !== check.id),
+                      })
+                    }
+                  />
+                ))}
+              </fieldset>
+            )}
+            {(blockers.length > 0 || !checklistDone) && (
+              <ul className="media-desk-blockers" id={`${uid}-blockers`} aria-label="What stops publishing">
+                {!checklistDone && <li>Finish the review checks above.</li>}
                 {blockers.map((blocker) => (
                   <li key={blocker.field}>
                     {blocker.message}{" "}
@@ -632,7 +686,10 @@ function DeskDetail({
                 appearance="primary"
                 disabled={busy || confirm !== null}
                 disabledFocusable={publishBlocked}
-                aria-describedby={dirty ? `${uid}-dirty` : undefined}
+                aria-describedby={
+                  [dirty ? `${uid}-dirty` : "", blockers.length > 0 || !checklistDone ? `${uid}-blockers` : ""].filter(Boolean).join(" ") ||
+                  undefined
+                }
                 onClick={() => {
                   if (!publishBlocked) setConfirm("publish");
                 }}
@@ -677,8 +734,7 @@ function DeskDetail({
                   ) : (
                     <>It has no licence, so it is published without one (dev demo); {frozenCredit} is frozen with this version.</>
                   )}{" "}
-                  Nothing
-                  appears in a game until the image is linked to content, which isn&apos;t done here.
+                  {review?.confirmNote ?? "Nothing appears in a game until the image is linked to content, which isn't done here."}
                   {!hasLink && " This image can't be previewed on this server, so you haven't seen it."}
                 </>
               ) : (
@@ -708,15 +764,36 @@ function DeskDetail({
 export function MediaDesk({
   sessionKey,
   onBlocked,
+  only,
+  eyebrow = "PHOTOS",
+  title = "Media",
+  intro = "Photos sent by photographers, with their licences. Review, edit the licence, publish or withdraw.",
+  footnote = "Publishing freezes a version's licence and credit. A photo reaches a game only once it is linked to content, which isn't done in this section.",
+  review,
+  onWritten,
+  children,
 }: {
   sessionKey: string;
   /** The workspace's account fence: clears private data and reports the access change. */
   onBlocked: (status: number) => void;
+  /** The lists this desk offers, in order; the first opens. Every list when absent. */
+  only?: readonly ViewKey[];
+  eyebrow?: string;
+  title?: string;
+  intro?: string;
+  footnote?: string;
+  /** The Submissions desk: review checks before publishing, and what to offer once published. */
+  review?: ReviewMode;
+  /** After a save, publish or withdraw succeeded. */
+  onWritten?: () => void;
+  /** Shown between the heading and the lists (the Submissions desk's photographer panel). */
+  children?: ReactNode;
 }) {
   const mounted = useMounted();
   // Dev Admin only: a missing licence name no longer blocks publishing here (lib/dev-waiver.ts).
   const devDemoWaiver = useDevDemoWaiver();
-  const [view, setView] = useState<ViewKey>("unverified");
+  const shownViews = only ? views.filter((v) => only.includes(v.key)) : views;
+  const [view, setView] = useState<ViewKey>(shownViews[0]?.key ?? "unverified");
   const viewRef = useRef(view);
   viewRef.current = view;
   const [rows, setRows] = useState<MediaItem[]>([]);
@@ -804,16 +881,24 @@ export function MediaDesk({
   const current = views.find((v) => v.key === view)!;
   if (openId)
     return (
-      <DeskDetail sessionKey={sessionKey} id={openId} onBlocked={onBlocked} onBack={back} onChanged={patchRow} />
+      <DeskDetail
+        sessionKey={sessionKey}
+        id={openId}
+        onBlocked={onBlocked}
+        onBack={back}
+        onChanged={patchRow}
+        onWritten={onWritten}
+        review={review}
+      />
     );
 
   return (
     <>
       <div className="admin-heading">
         <div>
-          <p className="eyebrow">PHOTOS</p>
-          <h1>Media</h1>
-          <p>Photos sent by photographers, with their licences. Review, edit the licence, publish or withdraw.</p>
+          <p className="eyebrow">{eyebrow}</p>
+          <h1>{title}</h1>
+          <p>{intro}</p>
         </div>
         <div className="admin-heading-actions">
           <Button icon={<ArrowClockwise />} disabled={load === "loading" || busy} onClick={() => void reload()}>
@@ -824,8 +909,10 @@ export function MediaDesk({
 
       <NoticeBar notice={notice} onClose={() => setNotice(null)} noticeRef={noticeRef} />
 
+      {children}
+
       <div className="media-desk-views" role="group" aria-label="Show photos">
-        {views.map((v) => (
+        {shownViews.map((v) => (
           <button
             key={v.key}
             type="button"
@@ -906,10 +993,7 @@ export function MediaDesk({
           </div>
         )}
       </section>
-      <p className="users-footnote">
-        Publishing freezes a version&apos;s licence and credit. A photo reaches a game only once it is linked to
-        content, which isn&apos;t done in this section.
-      </p>
+      <p className="users-footnote">{footnote}</p>
     </>
   );
 }

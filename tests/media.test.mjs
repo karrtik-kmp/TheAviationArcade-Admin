@@ -410,6 +410,19 @@ test("the list forwards only checked filters and always limit=50", async () => {
   assert.ok(backend.calls.every((c) => c.token === "photographer"), "the member's own token");
 });
 
+test("the owner principal reaches staff only, even if the backend sent it to a photographer", async () => {
+  const owned = { ...item, owner: "firebase:demo-airplane-games:someone" };
+  const { call } = mediaHarness({
+    reply: (c) => (c.path.startsWith("/v1/admin/media?") ? { items: [owned], nextCursor: null } : { ...detailAnswer, item: owned }),
+  });
+  assert.equal((await call("GET", "media", { as: "staff" })).body.items[0].owner, owned.owner);
+  assert.equal((await call("GET", "media/med-7", { as: "staff" })).body.item.owner, owned.owner);
+  const listed = (await call("GET", "media")).body.items[0];
+  assert.equal("owner" in listed, false, "a photographer's list has no owner");
+  assert.equal("owner" in (await call("GET", "media/med-7")).body.item, false, "nor does a photographer's detail");
+  assert.equal(listed.id, owned.id);
+});
+
 test("detail, edit, publish and withdraw call the matching backend paths", async () => {
   const { call, backend } = mediaHarness({ reply: (c) => (c.method === "GET" ? detailAnswer : item) });
   assert.deepEqual((await call("GET", "media/med-7")).body, detailAnswer);

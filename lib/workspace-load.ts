@@ -43,7 +43,8 @@ const fallbackError: Record<WorkspaceSource, string> = {
 /** Which sources each workspace section reads. Sections not listed read none. */
 const sectionNeeds: Record<string, readonly WorkspaceSource[]> = {
   Overview: ["submissions", "content", "audit", "identifier", "potd"],
-  Submissions: ["submissions"],
+  // On the game backend's media since the A3 fix wave: the desk reads its own lists, as the Media desk does.
+  Submissions: [],
   // On the game backend since A3.2 (the view-only demo shows sample drafts and loads nothing).
   "Aircraft Identifier": ["identifier"],
   // On the game backend since A3.3 (editorial kind `plane-of-the-day`); the desk reads the published photos itself.

@@ -267,6 +267,41 @@ export function rebaseLicence(
   return next;
 }
 
+/** Only the owner may state rights (`PUT .../rights` is owner-only), so a reviewer can't fix this one. */
+export const rightsOwnerOnly = "Only the photographer can state the rights; this photo can't be published until they do.";
+
+/**
+ * What a reviewer confirms before publishing a photo from the Submissions desk (A3 fix wave, D3). Only what the
+ * editor shows; nothing is stored, and the list starts empty again whenever the photo's revision changes.
+ */
+export const reviewChecks = [
+  { id: "quality", label: "The photo's quality is fit for the game." },
+  { id: "credit", label: "The credit matches the photographer." },
+  { id: "licence", label: "The licence is correct." },
+  { id: "rights", label: "A rights statement is present." },
+  { id: "safe", label: "Nothing private or unsafe is in the image." },
+] as const;
+export type ReviewCheckId = (typeof reviewChecks)[number]["id"];
+
+/** What the reviewer ticked, and for which photo revision. */
+export type ReviewTicks = { key: string; ids: readonly string[] };
+
+/** The ticks belong to one revision of one photo: any change to the photo (a new revision) starts them again. */
+export function reviewKey(item: { id: string; revision: number }): string {
+  return `${item.id}:${item.revision}`;
+}
+
+/** The ticks that still count for this revision; none when they were made against another. */
+export function ticksFor(ticks: ReviewTicks, key: string): readonly string[] {
+  return ticks.key === key ? ticks.ids : [];
+}
+
+/** True when every review check is ticked for this revision. Publishing from the Submissions desk needs it. */
+export function reviewReady(ticks: ReviewTicks, key: string): boolean {
+  const current = ticksFor(ticks, key);
+  return reviewChecks.every((check) => current.includes(check.id));
+}
+
 export type PublishBlocker = { field: "licenceName" | "credit" | "rights"; message: string };
 /**
  * What stops a SAVED draft from being published (the backend's 422 `content_invalid` rule): a licence
@@ -283,7 +318,7 @@ export function publishBlockers(
   if (!options.devDemoWaiver && !saved.licenceName?.trim()) blockers.push({ field: "licenceName", message: "Add a licence name." });
   if (saved.creditRequired && !saved.credit?.trim()) blockers.push({ field: "credit", message: "Add a credit, which this photo requires." });
   if (rights !== undefined && !hasV1Statement(rights))
-    blockers.push({ field: "rights", message: "No rights statement. The photographer who owns this photo needs to state their rights." });
+    blockers.push({ field: "rights", message: rightsOwnerOnly });
   return blockers;
 }
 

@@ -54,6 +54,7 @@ export function PotdDesk({
   onCreate,
   onBlocked,
   onOpenMedia,
+  initialOpenId,
 }: {
   items: PotdItem[];
   sessionKey: string;
@@ -68,16 +69,20 @@ export function PotdDesk({
   onBlocked: (status: number) => void;
   /** Opens the Media desk; absent when this account can't see it. */
   onOpenMedia?: () => void;
+  /** An item to open on arrival (a draft just made from the Submissions desk); its base version is already recorded. */
+  initialOpenId?: string;
 }) {
   const items = useMemo(() => [...unsorted].sort(comparePotd), [unsorted]);
   const inUse = useMemo(() => photosInUse(items), [items]);
   const photos = usePublishedPhotos(sessionKey, onBlocked);
   const [filter, setFilter] = useState<"current" | PotdStatus>("current");
-  const [openId, setOpenId] = useState("");
-  const [form, setForm] = useState<PotdForm | null>(null);
+  // An arriving item opens at once. The workspace recorded its base version when it made it (see AdminApp `photoActions`).
+  const arriving = initialOpenId ? (unsorted.find((each) => each.id === initialOpenId) ?? null) : null;
+  const [openId, setOpenId] = useState(arriving?.id ?? "");
+  const [form, setForm] = useState<PotdForm | null>(arriving ? formOf(arriving) : null);
   const [newPhoto, setNewPhoto] = useState("");
   // The item open now, read after an await: a late answer must never fill another item's form.
-  const openRef = useRef("");
+  const openRef = useRef(arriving?.id ?? "");
   const open = items.find((item) => item.id === openId) ?? null;
 
   function choose(item: PotdItem) {

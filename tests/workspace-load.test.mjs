@@ -62,7 +62,8 @@ test("the Overview renders with what loaded and lists what didn't", () => {
 
 test("a section waits while any of its sources loads", () => {
   const states = { ...sourceStates(results()), submissions: { state: "loading" } };
-  assert.deepEqual(sectionView("Submissions", states), { view: "loading" });
+  // Submissions reads the game backend's media itself since the A3 fix wave, so the D1 source no longer holds it up.
+  assert.deepEqual(sectionView("Submissions", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Overview", states), { view: "loading" });
   assert.deepEqual(sectionView("Plane of the Day", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Military readiness", states), { view: "ready", unavailable: [] });

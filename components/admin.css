@@ -2067,6 +2067,25 @@
   margin: 8px 0;
   padding-left: 20px;
 }
+/* Submissions desk: the review checks and what to do once published (A3 fix wave) */
+.media-desk-checks {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 12px;
+  padding: 0;
+  border: 0;
+}
+.media-desk-checks legend {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.media-desk-checks .fui-Checkbox {
+  min-height: 44px;
+  align-items: center;
+}
+.media-desk-after {
+  margin: 0 0 12px;
+}
 .media-desk-blockers a {
   color: inherit;
   text-decoration: underline;

@@ -202,6 +202,17 @@ function query(ctx: Ctx, allowed: string[]) {
 // eslint-disable-next-line no-control-regex
 const controlCharacter = /[\u0000-\u001f\u007f]/;
 
+/**
+ * The owner principal is for staff only. The backend already leaves it out for a photographer; this drops it again
+ * here, so a backend slip never shows one photographer another's account.
+ */
+function ownerFor<T extends { owner?: string }>(item: T, staff: boolean): T {
+  if (staff || item.owner === undefined) return item;
+  const rest = { ...item };
+  delete rest.owner;
+  return rest;
+}
+
 async function list(ctx: Ctx) {
   gate(ctx, "photographer");
   const params = query(ctx, ["state", "pending", "cursor"]);
@@ -223,11 +234,10 @@ async function list(ctx: Ctx) {
     out.set("cursor", cursor);
   }
   out.set("limit", PAGE_LIMIT);
-  return respond(
-    await viaBackend(mediaListSchema, "photographer", () =>
-      ctx.backend(ctx.principal.bearer).getJson(`/v1/admin/media?${out}`),
-    ),
+  const page = await viaBackend(mediaListSchema, "photographer", () =>
+    ctx.backend(ctx.principal.bearer).getJson(`/v1/admin/media?${out}`),
   );
+  return respond({ ...page, items: page.items.map((item) => ownerFor(item, ctx.principal.staff)) });
 }
 
 async function upload(ctx: Ctx, versionOf?: string) {
@@ -263,11 +273,10 @@ async function detail(ctx: Ctx) {
   gate(ctx, "photographer");
   const id = mediaId(ctx);
   query(ctx, []);
-  return respond(
-    await viaBackend(mediaDetailSchema, "photographer", () =>
-      ctx.backend(ctx.principal.bearer).getJson(`/v1/admin/media/${id}`),
-    ),
+  const found = await viaBackend(mediaDetailSchema, "photographer", () =>
+    ctx.backend(ctx.principal.bearer).getJson(`/v1/admin/media/${id}`),
   );
+  return respond({ ...found, item: ownerFor(found.item, ctx.principal.staff) });
 }
 
 async function edit(ctx: Ctx) {

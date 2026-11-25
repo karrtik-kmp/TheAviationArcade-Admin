@@ -243,6 +243,35 @@
       changed files.
     - Code review: SHIP.
     - No browser walk. The changes are server-side mapping and a pre-check, and unit tests cover them.
+- 2026-11-25: A3 fix wave, commit 2 (B1a). Submissions is now the Media desk in review mode, on the game backend's
+  media. It replaces the D1 desk, whose code is removed in commit 4.
+  - The desk lists "Unverified" and "Changes waiting". The Media desk keeps Published, Withdrawn and All (decision D2).
+  - Review checks (D3): five boxes gate Publish. They belong to one revision of the photo, so any change to it starts
+    them again (`reviewKey`, `reviewReady` in `lib/media-form.ts`). Publish re-checks them at confirm.
+  - Rights are the photographer's to state (`PUT .../rights` is owner-only, and an admin's 403 would sign them out).
+    The reviewer sees "Only the photographer can state the rights; this photo can't be published until they do."
+  - After a publish the desk offers two actions, shown only while the photo is still published:
+    - "Start a Plane of the Day draft" creates the draft, records its base version (`openPotd`), then opens it on
+      the Plane of the Day desk.
+    - "Link to an Aircraft Identifier question" goes to that desk with a note (D4).
+  - Account change:
+    - Submissions, Media and Plane of the Day remount per account (`key={sessionKey}`).
+    - The arrival draft is cleared with the other private data.
+  - Media routes drop `owner` for non-staff callers as defence in depth; the backend already omits it.
+  - The Submissions nav entry shows only with backend roles (D1).
+  - Verification:
+    - typecheck clean; `npm test` 422/422.
+    - eslint: no new errors; the react-hooks errors in AdminApp and MediaDesk are already at HEAD.
+    - Browser walk on Vite (5179) with the auth emulator, `ROLES_SOURCE=backend` and a LOCAL FAKE backend (a
+      scratch script with test data, not the real Backend):
+      - med-2, with no rights, shows the five checks and the owner-only blocker, and Publish stays blocked.
+      - A revision bump behind the desk gives the conflict notice and resets the checks.
+      - Publishing med-1 removes it from the queue.
+      - "Start a Plane of the Day draft" creates ed-1 and opens it, and the next save sent `version: 1`.
+      - At 375px there is no overflow, and each check row is at least 44px high.
+    - Code review: SHIP AFTER FIXES. Fixed: the arrival draft outlived an account change, and the photo actions
+      stayed after a withdraw. The checklist rule was moved out of the component so it can be tested.
+    - Not covered by tests: the component flow itself (the repo has no React harness). The walk above covers it.
 
 ## Next
 
