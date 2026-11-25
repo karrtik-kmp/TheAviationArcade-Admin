@@ -272,6 +272,39 @@
     - Code review: SHIP AFTER FIXES. Fixed: the arrival draft outlived an account change, and the photo actions
       stayed after a withdraw. The checklist rule was moved out of the component so it can be tested.
     - Not covered by tests: the component flow itself (the repo has no React harness). The walk above covers it.
+- 2026-11-25: A3 fix wave, commit 3 (B1b). The staff Overview now counts from the game backend.
+  - **Stats.**
+    - Staff see "Photos to review", "Changes waiting" and "Recent activity". The demo keeps its one sample stat.
+    - The counts come from the first page of each list, shown as "50+" (or "100+" for photographer requests) when
+      there is more. The backend gives no totals.
+  - **Removed for staff.** The D1 "Content records" stat, "Load demo data", the D1 queue and the "does not publish
+    into the game backend" note. The Overview no longer reads or reports the D1 sources.
+  - **Queue and badge.**
+    - The queue lists the first five photo ids to review.
+    - The nav badge shows the photos-to-review count, with screen-reader text.
+  - **Submissions panel.** A "New photographers" panel shows the count of pending photographer requests and links
+    to Users.
+  - **How the counts load.** This departs from the plan: they come from a small hook (`components/useReviewCounts.ts`)
+    instead of workspace-load sources, because those are fetched for every section and a refresh would unmount the
+    open editor.
+    - They load only for an admin on backend roles whose account is confirmed.
+    - They reload when the Overview or Submissions opens, and after a save, publish or withdraw.
+    - A 401, 403 or ACCOUNT_CHANGED from any list blocks, and no count is applied (`reviewBlock`).
+    - Counts read for one account are never rendered for another.
+  - **Stats grid.**
+    - The row sizes to its stats (`auto-fit`) and draws its dividers with a 1px gap.
+    - At 1023px and below, an odd last stat spans the row.
+    - The fixed `nth-child` border rules are gone.
+  - **Verification.**
+    - typecheck clean; `npm test` 425/425; eslint has no new errors.
+    - Browser walk against the LOCAL FAKE backend:
+      - counts 2 and 1, the badge shows 2, and the queue lists med-2 and med-1;
+      - the panel reads "2 waiting for approval";
+      - no empty stat cell and no horizontal overflow at 1280, 1100, 900 and 375 px;
+      - opening Submissions read the counts again.
+    - Code review: SHIP. Its four minors are fixed: counts tied to the account at render time, a reload on opening
+      the section, the confirmed-account gate, and a tested block rule.
+    - Not walked: mock roles, the demo Overview, and a count refresh after a publish.
 
 ## Next
 

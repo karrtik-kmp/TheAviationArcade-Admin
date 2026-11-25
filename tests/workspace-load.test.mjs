@@ -55,13 +55,19 @@ test("Military reads only its own backend source since A3.1, so the D1 desks fai
 });
 
 test("the Overview renders with what loaded and lists what didn't", () => {
-  const view = sectionView("Overview", sourceStates(results({ submissions: d1Down, audit: d1Down })));
+  const view = sectionView("Overview", sourceStates(results({ potd: d1Down, audit: d1Down })));
   assert.equal(view.view, "ready");
-  assert.deepEqual(view.unavailable.map(({ source }) => source), ["submissions", "audit"]);
+  assert.deepEqual(view.unavailable.map(({ source }) => source), ["audit", "potd"]);
+});
+
+test("the Overview no longer reads or reports the D1 sources (A3 fix wave)", () => {
+  assert.deepEqual([...sourcesFor("Overview")], ["audit", "identifier", "potd"]);
+  const view = sectionView("Overview", sourceStates(results({ submissions: d1Down, content: d1Down })));
+  assert.deepEqual(view, { view: "ready", unavailable: [] }, "D1 down leaves the Overview whole");
 });
 
 test("a section waits while any of its sources loads", () => {
-  const states = { ...sourceStates(results()), submissions: { state: "loading" } };
+  const states = { ...sourceStates(results()), submissions: { state: "loading" }, audit: { state: "loading" } };
   // Submissions reads the game backend's media itself since the A3 fix wave, so the D1 source no longer holds it up.
   assert.deepEqual(sectionView("Submissions", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Overview", states), { view: "loading" });

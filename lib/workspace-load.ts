@@ -42,7 +42,8 @@ const fallbackError: Record<WorkspaceSource, string> = {
 
 /** Which sources each workspace section reads. Sections not listed read none. */
 const sectionNeeds: Record<string, readonly WorkspaceSource[]> = {
-  Overview: ["submissions", "content", "audit", "identifier", "potd"],
+  // The review counts are read by the Overview itself (components/useReviewCounts.ts); the D1 sources are not used.
+  Overview: ["audit", "identifier", "potd"],
   // On the game backend's media since the A3 fix wave: the desk reads its own lists, as the Media desk does.
   Submissions: [],
   // On the game backend since A3.2 (the view-only demo shows sample drafts and loads nothing).

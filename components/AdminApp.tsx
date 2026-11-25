@@ -43,6 +43,8 @@ import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
 import { ActivityDesk } from "@/components/ActivityDesk";
 import { PotdDesk } from "@/components/PotdDesk";
+import { useReviewCounts, type ReviewCounts } from "@/components/useReviewCounts";
+import { countText, type ReviewCountKey } from "@/lib/review-counts";
 import { saveBody, type PotdForm, type PotdItem } from "@/lib/potd-desk";
 import type { AuditEvent } from "@/lib/audit-desk";
 import "@/components/admin.css";
@@ -277,6 +279,16 @@ export function AdminApp({
       accountRef.current.reportAccess(status);
     },
     [clearPrivateData],
+  );
+
+  // The review lists live on the game backend: an admin on backend roles only, never the view-only demo.
+  const reviewDesks = manageRoles && !readOnly;
+  // Read only once the account is confirmed, like the other desks; read again whenever the Overview or Submissions opens.
+  const reviews = useReviewCounts(
+    user.sessionKey,
+    reviewDesks && currentAccountMatches,
+    blockAccess,
+    section === "Overview" || section === "Submissions" ? section : "",
   );
 
   /** The Aircraft Identifier desk's read (A3.2). An item never goes back to an older version than one already shown. */
@@ -1101,8 +1113,11 @@ export function AdminApp({
                     weight={section === label ? "fill" : "regular"}
                   />
                   {label}
-                  {label === "Submissions" && pending > 0 && (
-                    <span className="admin-nav-count">{pending}</span>
+                  {label === "Submissions" && reviewDesks && !!reviews.counts.toReview?.n && (
+                    <span className="admin-nav-count">
+                      {countText(reviews.counts.toReview)}
+                      <span className="sr-only"> to review</span>
+                    </span>
                   )}
                 </button>
               ))}
@@ -1191,16 +1206,11 @@ export function AdminApp({
                   )}
                   {section === "Overview" && (
                     <Overview
-                      submissions={submissions}
                       records={records}
-                      pending={pending}
-                      returned={returned}
                       events={events}
                       onNavigate={setSection}
-                      onOpen={openSubmission}
-                      onLoadDemo={loadDemoData}
-                      loadingDemo={busy}
                       readOnly={readOnly}
+                      reviews={reviewDesks ? reviews : null}
                       unavailable={view.unavailable.map(({ source }) => source)}
                       identifierCount={
                         readOnly
@@ -1224,12 +1234,33 @@ export function AdminApp({
                       title="Submissions"
                       intro="Photos waiting for review, from photographers and from staff. Check each one, correct its licence, and publish it."
                       footnote="Only the photographer can state a photo's rights. Publishing freezes a version's licence and credit; the photo reaches a game once it is used for Plane of the Day or linked to a question."
+                      onWritten={reviews.refresh}
                       review={{
                         afterPublish: photoActions,
                         confirmNote:
                           "Once it is published you can start a Plane of the Day draft from it or link it to an Aircraft Identifier question.",
                       }}
-                    />
+                    >
+                      <section className="admin-panel review-photographers" aria-labelledby="review-photographers-title">
+                        <div>
+                          <h2 id="review-photographers-title">New photographers</h2>
+                          <p>
+                            {reviews.counts.photographers
+                              ? `${countText(reviews.counts.photographers)} waiting for approval.`
+                              : reviews.loading
+                                ? "Checking…"
+                                : "The photographer requests could not be read."}{" "}
+                            Approve them in Users so they can send photos.
+                          </p>
+                        </div>
+                        <div className="admin-actions">
+                          <Button onClick={() => setSection("Users")}>Open photographer requests</Button>
+                          <Button icon={<ArrowClockwise size={16} />} onClick={reviews.refresh}>
+                            Reload
+                          </Button>
+                        </div>
+                      </section>
+                    </MediaDesk>
                   )}
                   {section === "Aircraft Identifier" && !readOnly && (
                     <IdentifierDesk
@@ -1293,6 +1324,7 @@ export function AdminApp({
                       sessionKey={user.sessionKey}
                       onBlocked={blockAccess}
                       only={["published", "withdrawn", "all"]}
+                      onWritten={reviews.refresh}
                       intro="Every photo the game backend holds. New photos and waiting changes are reviewed in Submissions."
                     />
                   )}
@@ -1314,30 +1346,22 @@ export function AdminApp({
 }
 
 function Overview({
-  submissions,
   records,
-  pending,
-  returned,
   events,
   onNavigate,
-  onOpen,
-  onLoadDemo,
-  loadingDemo,
   readOnly,
+  reviews,
   unavailable,
   identifierCount,
   potdCount,
 }: {
-  submissions: Submission[];
+  /** The view-only demo's sample drafts; staff never see this count. */
   records: EditorialRecord[];
-  pending: number;
-  returned: number;
   events: AuditEvent[];
   onNavigate: (section: Section) => void;
-  onOpen: (item: Submission) => void;
-  onLoadDemo: () => void;
-  loadingDemo: boolean;
   readOnly: boolean;
+  /** The game backend's review lists (an admin on backend roles); null otherwise, and the review parts are left out. */
+  reviews: ReviewCounts | null;
   unavailable: WorkspaceSource[];
   /** Aircraft Identifier questions (the backend desk), or the demo's sample drafts in the view-only preview. */
   identifierCount: number;
@@ -1345,14 +1369,11 @@ function Overview({
   potdCount: number;
 }) {
   const missing = (source: WorkspaceSource) => unavailable.includes(source);
-  const count = (source: WorkspaceSource, value: number) =>
-    missing(source) ? "—" : value;
-  const queue = submissions
-    .filter(
-      (item) =>
-        item.status === "pending" || item.status === "changes_requested",
-    )
-    .slice(0, 5);
+  const count = (source: WorkspaceSource, value: number) => (missing(source) ? "—" : value);
+  const reviewText = (key: ReviewCountKey) => {
+    const found = reviews?.counts[key];
+    return found ? countText(found) : "—";
+  };
   return (
     <>
       <div className="admin-heading">
@@ -1362,128 +1383,98 @@ function Overview({
           <p>
             {readOnly
               ? "Browse the sample editorial drafts. This demo account can view content but cannot edit, review or publish."
-              : "Review community photographs and prepare content for the public prototype."}
+              : "Review photos and prepare game content on the game backend."}
           </p>
         </div>
-        {!readOnly && (
-        <div className="admin-heading-actions">
-          <Button
-            appearance="primary"
-            onClick={() => onNavigate("Submissions")}
-            icon={<ClipboardText size={17} />}
-          >
-            Review submissions
-          </Button>
-          {
-            <Button
-              disabled={loadingDemo}
-              onClick={onLoadDemo}
-              icon={<Newspaper size={17} />}
-            >
-              {loadingDemo ? "Loading demo…" : "Load demo data"}
+        {reviews && (
+          <div className="admin-heading-actions">
+            <Button appearance="primary" onClick={() => onNavigate("Submissions")} icon={<ClipboardText size={17} />}>
+              Review photos
             </Button>
-          }
-        </div>
+          </div>
         )}
       </div>
       <div className="admin-stats">
-        {!readOnly && (
-        <>
-        <Stat
-          label="Awaiting review"
-          value={count("submissions", pending)}
-          detail="Submissions in the review queue"
-          icon={<ClipboardText size={20} />}
-          onClick={() => onNavigate("Submissions")}
-        />
-        <Stat
-          label="Changes requested"
-          value={count("submissions", returned)}
-          detail="Returned to contributors"
-          icon={<ArrowClockwise size={20} />}
-          onClick={() => onNavigate("Submissions")}
-        />
-        </>
+        {reviews && (
+          <>
+            <Stat
+              label="Photos to review"
+              value={reviewText("toReview")}
+              detail="New photos waiting for a first review"
+              icon={<ClipboardText size={20} />}
+              onClick={() => onNavigate("Submissions")}
+            />
+            <Stat
+              label="Changes waiting"
+              value={reviewText("changes")}
+              detail="Published photos with a newer draft"
+              icon={<ArrowClockwise size={20} />}
+              onClick={() => onNavigate("Submissions")}
+            />
+          </>
         )}
-        <Stat
-          label="Content records"
-          value={count("content", records.length)}
-          detail="Drafts, scheduled and published"
-          icon={<Newspaper size={20} />}
-          onClick={() => onNavigate("Aircraft Identifier")}
-        />
+        {readOnly && (
+          <Stat
+            label="Content records"
+            value={records.length}
+            detail="Sample drafts, scheduled and published"
+            icon={<Newspaper size={20} />}
+            onClick={() => onNavigate("Aircraft Identifier")}
+          />
+        )}
         {!readOnly && (
-        <Stat
-          label="Recent activity"
-          value={count("audit", events.length)}
-          detail="The newest audit events, up to 50"
-          icon={<ClockCounterClockwise size={20} />}
-          onClick={() => onNavigate("Activity")}
-        />
+          <Stat
+            label="Recent activity"
+            value={count("audit", events.length)}
+            detail="The newest audit events, up to 50"
+            icon={<ClockCounterClockwise size={20} />}
+            onClick={() => onNavigate("Activity")}
+          />
         )}
       </div>
       <div className="admin-split">
-        {!readOnly && (
-        <section className="admin-panel">
-          <div className="admin-panel-header">
-            <div>
-              <h2>Actionable queue</h2>
-              <p>Pending reviews and contributor updates</p>
+        {reviews && (
+          <section className="admin-panel">
+            <div className="admin-panel-header">
+              <div>
+                <h2>Photos to review</h2>
+                <p>The newest photos waiting for a first review</p>
+              </div>
+              <button className="admin-text-button" onClick={() => onNavigate("Submissions")}>
+                View all <span>→</span>
+              </button>
             </div>
-            <button
-              className="admin-text-button"
-              onClick={() => onNavigate("Submissions")}
-            >
-              View all <span>→</span>
-            </button>
-          </div>
-          {missing("submissions") ? (
-            <div className="admin-empty">
-              <b>Submissions could not load</b>
-              <span>The queue shows again once they load.</span>
-            </div>
-          ) : queue.length ? (
-            <div className="admin-queue">
-              {queue.map((item) => (
-                <button
-                  className="admin-queue-row"
-                  key={item.id}
-                  onClick={() => {
-                    onNavigate("Submissions");
-                    onOpen(item);
-                  }}
-                >
-                  <img className="admin-row-photo" src={sitePath(item.photoUrl)} alt="" />
-                  <span className="queue-copy">
-                    <b>{item.data.title}</b>
-                    <small>
-                      {item.data.photographer} ·{" "}
-                      {categoryNames[item.data.category]}
-                    </small>
-                  </span>
-                  <StatusBadge status={item.status} />
-                  <span className="queue-arrow">→</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="admin-empty">
-              <CheckCircle size={25} />
-              <b>Nothing needs attention</b>
-              <span>New submissions will appear here.</span>
-            </div>
-          )}
-        </section>
+            {reviews.failed.includes("toReview") ? (
+              <div className="admin-empty">
+                <b>The photo list could not load</b>
+                <span>It shows again once it loads.</span>
+              </div>
+            ) : reviews.queue.length ? (
+              <div className="admin-queue">
+                {reviews.queue.map((id) => (
+                  <button className="admin-queue-row" key={id} onClick={() => onNavigate("Submissions")}>
+                    <span className="queue-copy">
+                      <b>{id}</b>
+                      <small>Waiting for review</small>
+                    </span>
+                    <span className="queue-arrow">→</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="admin-empty">
+                <CheckCircle size={25} />
+                <b>{reviews.loading ? "Loading…" : "Nothing needs attention"}</b>
+                {!reviews.loading && <span>New photos will appear here.</span>}
+              </div>
+            )}
+          </section>
         )}
         <section className="admin-panel overview-shortcuts">
           <div className="admin-panel-header">
             <div>
               <h2>Editorial desks</h2>
-              <p>
-                {readOnly
-                  ? "View the sample content for each desk"
-                  : "Continue preparing approved material"}
-              </p>
+              <p>{readOnly ? "View the sample content for each desk" : "Continue preparing approved material"}</p>
             </div>
           </div>
           <button onClick={() => onNavigate("Aircraft Identifier")}>
@@ -1493,7 +1484,7 @@ function Overview({
             <span>
               <b>Aircraft Identifier</b>
               <small>
-                {missing(readOnly ? "content" : "identifier")
+                {!readOnly && missing("identifier")
                   ? "Could not load"
                   : `${identifierCount} ${readOnly ? "records" : "questions"}`}
               </small>
@@ -1507,19 +1498,18 @@ function Overview({
             <span>
               <b>Plane of the Day</b>
               <small>
-                {missing(readOnly ? "content" : "potd")
-                  ? "Could not load"
-                  : `${potdCount} ${readOnly ? "records" : "items"}`}
+                {!readOnly && missing("potd") ? "Could not load" : `${potdCount} ${readOnly ? "records" : "items"}`}
               </small>
             </span>
             <span>→</span>
           </button>
         </section>
       </div>
-      <p className="admin-demo-note">
-        Editorial records on this site prepare prototype content. They do not
-        publish into the game backend.
-      </p>
+      {readOnly && (
+        <p className="admin-demo-note">
+          These are sample drafts for the demo preview. They do not publish into the game backend.
+        </p>
+      )}
     </>
   );
 }

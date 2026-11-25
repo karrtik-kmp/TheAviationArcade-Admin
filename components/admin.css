@@ -96,9 +96,12 @@
   margin-top: 10px;
   color: var(--muted);
 }
+/* The row sizes to its stats (staff see three, the demo one), so no cell is ever left empty. The 1px gap over the
+   line colour draws the dividers, wherever the cells wrap. */
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -106,9 +109,6 @@
 }
 .admin-stat {
   padding: 20px;
-}
-.admin-stat + .admin-stat {
-  border-left: 1px solid var(--line);
 }
 .admin-stat strong {
   display: block;
@@ -379,12 +379,6 @@
   .admin-heading h1 {
     font-size: 39px;
   }
-  .admin-stat:nth-child(3) {
-    border-top: 1px solid var(--line);
-  }
-  .admin-stat:nth-child(4) {
-    border-top: 1px solid var(--line);
-  }
   .admin-panel {
     overflow-x: auto;
   }
@@ -558,7 +552,7 @@
   line-height: 1.7;
 }
 .admin-stats {
-  background: var(--panel, #fffdf9);
+  background: var(--line);
 }
 .admin-stat {
   display: grid;
@@ -567,7 +561,7 @@
   gap: 2px 10px;
   min-width: 0;
   border: 0;
-  background: transparent;
+  background: var(--panel, #fffdf9);
   color: var(--ink, #14242c);
   text-align: left;
   cursor: pointer;
@@ -1382,11 +1376,9 @@
   .admin-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .admin-stat:nth-child(3) {
-    border-left: 0;
-  }
-  .admin-stat:nth-child(n + 3) {
-    border-top: 1px solid var(--line);
+  /* An odd last stat takes the whole row rather than leaving an empty cell beside it. */
+  .admin-stat:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 767px) {
@@ -2067,7 +2059,23 @@
   margin: 8px 0;
   padding-left: 20px;
 }
-/* Submissions desk: the review checks and what to do once published (A3 fix wave) */
+/* Submissions desk: the photographers panel, the review checks and what to do once published (A3 fix wave) */
+.review-photographers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  margin-bottom: 16px;
+  padding: 16px 20px;
+}
+.review-photographers h2 {
+  margin: 0 0 4px;
+}
+.review-photographers p {
+  margin: 0;
+  color: var(--muted);
+}
 .media-desk-checks {
   display: grid;
   gap: 2px;
@@ -2181,6 +2189,7 @@
   }
 }
 @media (max-width: 380px) {
+  .review-photographers .admin-actions .fui-Button,
   .media-desk-detail .admin-actions .fui-Button,
   .media-desk-head .fui-Button {
     width: 100%;
