@@ -51,8 +51,8 @@ export function reviewBlock(replies: readonly ReviewReply[]): 401 | 403 | 409 | 
 
 /** The three lists, as the Admin's own routes serve them. */
 export const reviewCountUrls = {
-  toReview: "/api/media?state=unverified",
-  changes: "/api/media?pending=true",
+  toReview: "/api/media?state=unverified&review=none",
+  changes: "/api/media?pending=true&review=none",
   photographers: "/api/admin/roles?state=pending",
 } as const;
 export type ReviewCountKey = keyof typeof reviewCountUrls;

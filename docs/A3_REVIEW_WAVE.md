@@ -1,6 +1,6 @@
 # A3 review wave: Backend API 0.30.0 (photo review feedback)
 
-**Status:** IN PROGRESS, 2026-11-25. The user approved starting it. **Source:** Backend `62ff2bb`, the notice
+**Status:** DONE, 2026-11-25 (R1 `01ae284`, R2 the next commit). The user approved starting it. **Source:** Backend `62ff2bb`, the notice
 `../docs/briefs/website-media-review-contract.md` (repo root `docs/briefs/`). The deploy to dev.api is joint (backend, website and
 Admin together) and needs the user's sign-off; nothing here deploys.
 

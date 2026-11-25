@@ -27,8 +27,8 @@ test("the queue shows the first five ids as listed", () => {
 
 test("the counts read the Admin's own routes, with only filters those routes accept", () => {
   assert.deepEqual(reviewCountUrls, {
-    toReview: "/api/media?state=unverified",
-    changes: "/api/media?pending=true",
+    toReview: "/api/media?state=unverified&review=none",
+    changes: "/api/media?pending=true&review=none",
     photographers: "/api/admin/roles?state=pending",
   });
 });

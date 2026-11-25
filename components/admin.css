@@ -2097,6 +2097,13 @@
 .media-desk-submission h3 {
   margin: 0 0 4px;
 }
+.media-desk-reason {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .media-desk-after {
   margin: 0 0 12px;
 }

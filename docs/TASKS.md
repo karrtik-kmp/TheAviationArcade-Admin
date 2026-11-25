@@ -380,6 +380,43 @@
       - the request lengths count code points;
       - there are tests for 200 and 201 emoji.
     - Not run against the real Backend 0.29.0, which is not on `dev.api`.
+- 2026-11-25: Backend API 0.30.0, photo review feedback (`docs/A3_REVIEW_WAVE.md`; Backend `62ff2bb`).
+  - **R1, the contract and parsers (`01ae284`).**
+    - `contracts/openapi.yaml` is a byte copy of 0.30.0.
+    - `MediaItem.review` is required.
+    - `POST media/:id/review` is admin only, and the reason is normalised as the backend does.
+    - `GET media` accepts `review=none|changes_requested|declined`.
+    - The backend's `media_declined` maps to `MEDIA_DECLINED`, and the message never carries the reason.
+    - `review.decidedBy` is dropped for callers who aren't staff.
+    - The audit actions gain `media_review`.
+  - **R2, the desks.**
+    - Submissions shows four views: To review (`review=none`), Changes waiting (`review=none`), Changes requested and
+      Declined. The rows carry a decision badge.
+    - The photo detail has a "Review decision" panel. It shows the decision, the reason as plain text, when and by
+      whom it was made, and the version it was made on.
+    - The panel offers the actions `reviewActions` allows: Request changes, Change the reason, Reopen, Decline and
+      Withdraw the decision.
+    - The reason is checked and counted before sending. An identical decision says "Nothing changed", and a 409
+      reloads with neutral wording.
+    - The Overview counts read the `review=none` queues.
+  - **Verification.**
+    - typecheck clean; `npm test` 400/400; `npm run build` and `npm run build:node` complete; no new lint errors.
+    - Browser walk against the LOCAL FAKE backend with 0.30.0 rules:
+      - an empty reason is refused at the field;
+      - Request changes sent the trimmed reason;
+      - the same reason gave "Nothing changed";
+      - Decline with a line break rendered as two lines;
+      - Reopen after a revision bump gave the neutral 409 and a reload;
+      - Withdraw the decision erased the decision;
+      - the declined photo left To review and showed under Declined.
+    - Code review: SHIP AFTER FIXES. Fixed:
+      - Cancel returns focus to its button;
+      - a 409 keeps the form and the typed reason;
+      - the withdraw wording fits a withdrawn photo;
+      - a reason error moves focus to the field;
+      - the test shows U+2028 as an escape.
+    - The reviewer also noted that `decideReview` is covered only by the browser walk, with no unit test.
+    - Not run against the real Backend 0.30.0, which is not on `dev.api`.
 
 ## Next
 
@@ -393,23 +430,13 @@
       `docs/MEDIA_PLAN.md:219`). Never touch `.wrangler/state` or the D1 database itself.
 - [ ] `data/reference-airports.json` and `scripts/fetch-reference-data.py` have no reader in the Admin since
       `admin/references` went (A3.5): delete them, or keep them if the website uses its own copy.
-- [ ] Backend 0.30.0, photo review feedback. Planned in Backend `4da1830`, `docs/plans/media-review-feedback.md`, and
-      waiting for the user's go-ahead. The Backend proposes that the backend, the website and the Admin go to dev
-      together at 0.30.0. When it lands, the Admin:
-  - Vendors again. Strict readers break again: `MediaItem.review` is required, and `Error.code` gains `media_declined`.
-  - Adds "Request changes" and "Decline" (reason 1..500) and "Withdraw decision", through
-    `POST /v1/admin/media/{id}/review` with `{ revision, decision, reason }` (or `decision: null`).
-    - The review is a sub-record (`MediaItem.review`), not a new state.
-    - "Declined" applies only to unverified photos; "changes requested" also works on a live photo's pending draft.
-    - Withdrawn photos can't be reviewed.
-  - Changes "Photos to review" to `?state=unverified&review=none` plus `?pending=true&review=none`, so the queue and
-    the counts leave out photos that have already had a decision.
-  - Not in 0.30.0: `AuditEvent.action` as an open set (keep parsing leniently), totals, and list thumbnails.
+- [x] Backend 0.30.0, photo review feedback: done on `feat/a3-desks` (`docs/A3_REVIEW_WAVE.md`).
+- [ ] The joint dev window: Backend 0.29.0 + 0.30.0 (migrations 0028, 0029), the website and the Admin to dev together,
+      after the website has vendored 0.30.0, with the user's sign-off and a backend backup first. Until then this branch
+      must not deploy: a strict 0.30.0 reader fails against the dev.api of today. Then walk the review desk on `dev.admin.`.
 - [ ] `lib/request/military.ts:51,57`: `.max(2400)` counts UTF-16 units on the raw text; check against the Military
       contract wording.
 - [ ] Walk mock roles (Submissions hidden, no review counts) and the demo Overview (one stat, full row).
-- [ ] Backend 0.29.0 to `dev.api`: the user's call, after the website has also vendored 0.29.0 (the Admin has, at
-      commit 5 of the fix wave). The Backend session was told on 2026-11-25. Then walk a v2 photo on `dev.admin.`.
 - [ ] Walk the Plane of the Day desk against the real Backend's demo seed (`pod-4` … `pod-8`): publish the photos in
       Media, re-run the seed, then schedule one; and with `DEV_DEMO_WAIVER=dev-demo` on `dev.admin.`.
 - [ ] Walk the Activity desk with `ROLES_SOURCE=backend` against a local or the dev backend: waiver flags on a waived

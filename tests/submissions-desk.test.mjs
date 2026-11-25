@@ -56,3 +56,37 @@ test("0.29.0: the v2 agreement can be published; a v2 photo whose name was remov
   // A v1 photo has no private name to need.
   assert.deepEqual(publishBlockers(licence, stated, { fullName: null }), []);
 });
+
+// 0.30.0 review feedback: which decisions the desk offers, and the reason rule it checks before sending.
+const { reviewActions, reasonErrors, reasonLength, REVIEW_REASON_MAX } = await import("../lib/media-form.ts");
+const decided = (decision) => ({ decision, reason: "x", version: 1, decidedAt: "2026-11-25T10:00:00.000Z" });
+
+test("0.30.0: the review decisions offered follow the contract for every state", () => {
+  const offer = (state, publishedVersion, draftVersion, review) =>
+    reviewActions({ state, publishedVersion, draftVersion, review }).map((a) => `${a.decision}:${a.label}`);
+  assert.deepEqual(offer("unverified", null, 1, null), ["changes_requested:Request changes", "declined:Decline"]);
+  assert.deepEqual(offer("unverified", null, 1, decided("changes_requested")), [
+    "changes_requested:Change the reason",
+    "declined:Decline",
+    "null:Withdraw the decision",
+  ]);
+  assert.deepEqual(offer("unverified", null, 2, decided("declined")), [
+    "changes_requested:Reopen: request changes",
+    "declined:Change the reason",
+    "null:Withdraw the decision",
+  ]);
+  assert.deepEqual(offer("published", 1, 2, null), ["changes_requested:Request changes"], "a pending draft; never declined");
+  assert.deepEqual(offer("published", 2, 2, null), [], "nothing pending");
+  assert.deepEqual(offer("published", 2, 2, decided("changes_requested")), ["null:Withdraw the decision"]);
+  assert.deepEqual(offer("withdrawn", null, 2, null), []);
+  assert.deepEqual(offer("withdrawn", null, 2, decided("changes_requested")), ["null:Withdraw the decision"], "withdrawn keeps it");
+});
+
+test("0.30.0: the reason is counted and checked as it will be stored", () => {
+  assert.equal(reasonLength("  a\r\nb  "), 3);
+  assert.equal(reasonLength("\u{1F600}"), 1);
+  assert.equal(reasonErrors("Please add the airline.\nThanks."), undefined);
+  assert.equal(reasonErrors(`${"x".repeat(REVIEW_REASON_MAX)}   `), undefined);
+  for (const bad of ["", "   ", "a\tb", "a\u0000b", "a\u2028b", "a\uD800b", "x".repeat(REVIEW_REASON_MAX + 1)])
+    assert.equal(typeof reasonErrors(bad), "string", JSON.stringify(bad));
+});

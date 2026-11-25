@@ -27,6 +27,12 @@ import {
   ticksFor,
   rightsOf,
   rightsOwnerOnly,
+  REVIEW_REASON_MAX,
+  reasonErrors,
+  reasonLength,
+  reviewActions,
+  reviewDecisionText,
+  type ReviewDecision,
   splitEdit,
   type ReviewTicks,
   type RightsState,
@@ -44,7 +50,7 @@ import type { MediaDetail, MediaItem, MediaLicence, MediaList, MediaVersion } fr
  * does not put a photo in any game: linking to content is not done in this section.
  */
 
-export type ViewKey = "unverified" | "changes" | "published" | "withdrawn" | "all";
+export type ViewKey = "unverified" | "changes" | "sentBack" | "declined" | "published" | "withdrawn" | "all";
 
 /** The Submissions desk's review mode: a checklist that must be complete to publish, and what to offer afterwards. */
 export type ReviewMode = {
@@ -54,8 +60,16 @@ export type ReviewMode = {
   confirmNote?: string;
 };
 const views: { key: ViewKey; label: string; hint: string; query: string }[] = [
-  { key: "unverified", label: "Unverified", hint: "New photos waiting for a first review", query: "state=unverified" },
-  { key: "changes", label: "Changes waiting", hint: "Published photos whose draft is ahead of the live version", query: "pending=true" },
+  // 0.30.0: the two review queues leave out photos already sent back or declined (`review=none`).
+  { key: "unverified", label: "To review", hint: "New photos waiting for a first review", query: "state=unverified&review=none" },
+  {
+    key: "changes",
+    label: "Changes waiting",
+    hint: "Published photos whose draft is ahead of the live version",
+    query: "pending=true&review=none",
+  },
+  { key: "sentBack", label: "Changes requested", hint: "Photos sent back to their photographer, with a reason", query: "review=changes_requested" },
+  { key: "declined", label: "Declined", hint: "Photos turned down; reopen one to send it back instead", query: "review=declined" },
   { key: "published", label: "Published", hint: "Photos that are live", query: "state=published" },
   { key: "withdrawn", label: "Withdrawn", hint: "Photos taken down; they can be published again", query: "state=withdrawn" },
   { key: "all", label: "All", hint: "Every photo", query: "" },
@@ -230,6 +244,12 @@ function DeskDetail({
   const [justPublished, setJustPublished] = useState<MediaItem | null>(null);
   // A removal of the photographer's private data waiting for its confirmation (privacy request, agreement section 8).
   const [clearAsk, setClearAsk] = useState<"name" | "handle" | "display" | null>(null);
+  // A review decision being written (0.30.0): null withdraws the current decision. The reason as typed.
+  const [reviewAsk, setReviewAsk] = useState<{ decision: ReviewDecision | null; label: string } | null>(null);
+  const [reason, setReason] = useState("");
+  const [reasonError, setReasonError] = useState<string | undefined>(undefined);
+  const reviewAskRef = useRef<HTMLDivElement>(null);
+  const reviewButtonsRef = useRef<HTMLDivElement>(null);
   // Only the newest load or write may change the screen.
   const generation = useRef(0);
   // Writes have their own generation, so a reload never swallows a save or publish answer.
@@ -307,6 +327,10 @@ function DeskDetail({
   useEffect(() => {
     if (confirm) confirmRef.current?.focus();
   }, [confirm]);
+
+  useEffect(() => {
+    if (reviewAsk) reviewAskRef.current?.focus();
+  }, [reviewAsk]);
 
   const item = detail?.item ?? null;
   const base = item ? baseOf(item.draft) : null;
@@ -401,6 +425,65 @@ function DeskDetail({
     }
   }
 
+  /**
+   * Sends a review decision (0.30.0), fenced by the revision like every write and never retried. The reason is written
+   * for the photographer, who sees it word for word; it is not logged or copied anywhere else.
+   */
+  async function decideReview() {
+    if (!item || busy || !reviewAsk) return;
+    const decision = reviewAsk.decision;
+    if (decision !== null) {
+      const problem = reasonErrors(reason);
+      setReasonError(problem);
+      if (problem) {
+        // The field takes focus, so its error (in its description) is read out.
+        document.getElementById(`${uid}-reason`)?.focus();
+        return;
+      }
+    }
+    const before = item.revision;
+    const body = decision === null ? { revision: before, decision } : { revision: before, decision, reason: reason.replace(/\r\n/g, "\n").trim() };
+    const mine = ++writeGeneration.current;
+    setBusy(true);
+    setNotice(null);
+    const reply = await callMedia(sessionKey, `/api/media/${item.id}/review`, body, "POST");
+    setBusy(false);
+    if (mine !== writeGeneration.current) return;
+    const blocked = blockStatus(reply);
+    if (blocked !== null) return onBlocked(blocked);
+    focusAfter.current = "notice";
+    const outcome = mediaOutcome(reply.status, reply.code);
+    if (outcome === "ok") {
+      setReviewAsk(null);
+      setReason("");
+      const after = isItem(reply.body) ? reply.body.revision : null;
+      // The backend answers an identical decision (same reason, same version) with the item unchanged.
+      setNotice({
+        kind: "success",
+        text:
+          after === before
+            ? "Nothing changed: that decision was already in place."
+            : decision === null
+              ? "The decision was withdrawn and its reason erased."
+              : decision === "declined"
+                ? `${item.id} was declined. The photographer sees the reason.`
+                : `Changes were requested on ${item.id}. The photographer sees the reason.`,
+      });
+      onWritten?.();
+      await reload(false);
+    } else if (outcome === "conflict") {
+      // A stale revision, or a decision this photo can't take in its state now: both are 409 version_conflict. The
+      // form and the typed reason stay; the next Send is a new, deliberate write with the reloaded revision.
+      setNotice({
+        kind: "error",
+        text: "This photo changed, or can't take that decision in its current state. The latest details are loaded; check them and decide again.",
+      });
+      await reload(false);
+    } else {
+      setNotice({ kind: "error", text: failureText(reply, "The decision couldn't be saved.") });
+    }
+  }
+
   async function act(action: "publish" | "withdraw") {
     if (!item || busy) return;
     // Re-check at the moment of confirming: the saved licence must still allow it and nothing may be unsaved.
@@ -471,6 +554,7 @@ function DeskDetail({
           {id}
           {item && ` · ${stateText[item.state]}`}
           {item && changesWaiting(item) && <span className="status-badge media-desk-badge">Changes waiting</span>}
+          {item?.review && <span className="status-badge media-desk-badge">{reviewDecisionText[item.review.decision]}</span>}
         </h2>
       </div>
     </div>
@@ -663,6 +747,131 @@ function DeskDetail({
           {dirty && <span className="media-desk-dirty">Unsaved edits</span>}
         </div>
       </form>
+
+      <section className="media-desk-submission media-desk-review" aria-labelledby={`${uid}-review`}>
+        <h3 id={`${uid}-review`}>Review decision</h3>
+        <p className="media-desk-note">
+          Send a photo back with what to change, or decline it. The photographer sees the reason word for word on the website;
+          no email is sent. Only the latest reason is kept.
+        </p>
+        {item.review ? (
+          <>
+            <dl className="media-desk-facts">
+              <div>
+                <dt>Decision</dt>
+                <dd>{reviewDecisionText[item.review.decision]}</dd>
+              </div>
+              <div>
+                <dt>Decided</dt>
+                <dd>
+                  {when(item.review.decidedAt, mounted)}
+                  {item.review.decidedBy ? ` by ${accountOf(item.review.decidedBy)}` : ""}
+                </dd>
+              </div>
+              <div>
+                <dt>Made on</dt>
+                <dd>
+                  Version {item.review.version}
+                  {item.review.version < item.draftVersion ? ` (the draft is now version ${item.draftVersion})` : ""}
+                </dd>
+              </div>
+            </dl>
+            <p className="media-desk-reason" aria-label="Reason">
+              {item.review.reason}
+            </p>
+          </>
+        ) : (
+          <p>No decision on this photo.</p>
+        )}
+        {reviewAsk ? (
+          <div
+            className="media-desk-confirm"
+            role="group"
+            aria-labelledby={`${uid}-review-ask`}
+            ref={reviewAskRef}
+            tabIndex={-1}
+          >
+            <p id={`${uid}-review-ask`}>
+              <b>
+                {reviewAsk.decision === null
+                  ? "Withdraw the decision?"
+                  : reviewAsk.decision === "declined"
+                    ? "Decline this photo?"
+                    : "Request changes from the photographer?"}
+              </b>{" "}
+              {reviewAsk.decision === null
+                ? reviewActions(item).some((action) => action.decision !== null)
+                  ? "Its reason is erased and the photo goes back to the review queue."
+                  : "Its reason is erased."
+                : reviewAsk.decision === "declined"
+                  ? "The photographer can't change it until it is reopened."
+                  : "A change they make clears the request and brings it back to review."}
+            </p>
+            {reviewAsk.decision !== null && (
+              <div className="admin-field full">
+                <label htmlFor={`${uid}-reason`}>
+                  <span>Reason for the photographer</span>
+                </label>
+                <Textarea
+                  id={`${uid}-reason`}
+                  rows={4}
+                  value={reason}
+                  aria-invalid={!!reasonError}
+                  aria-describedby={[`${uid}-reason-hint`, reasonError ? `${uid}-reason-error` : ""].filter(Boolean).join(" ")}
+                  onChange={(_, data) => {
+                    setReason(data.value);
+                    setReasonError(undefined);
+                  }}
+                />
+                <small className="field-hint" id={`${uid}-reason-hint`}>
+                  Line breaks are fine. {reasonLength(reason)} of {REVIEW_REASON_MAX} characters.
+                </small>
+                {reasonError && (
+                  <span className="media-desk-error" id={`${uid}-reason-error`}>
+                    {reasonError}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="admin-actions">
+              <Button appearance="primary" disabled={busy} onClick={() => void decideReview()}>
+                {busy ? "Working…" : reviewAsk.decision === null ? "Withdraw the decision" : "Send the decision"}
+              </Button>
+              <Button
+                disabled={busy}
+                onClick={() => {
+                  const opener = reviewAsk.decision;
+                  setReviewAsk(null);
+                  setReasonError(undefined);
+                  requestAnimationFrame(() =>
+                    reviewButtonsRef.current?.querySelector<HTMLElement>(`[data-review="${opener}"]`)?.focus(),
+                  );
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="admin-actions" ref={reviewButtonsRef}>
+            {reviewActions(item).map((action) => (
+              <Button
+                key={`${action.decision}`}
+                data-review={`${action.decision}`}
+                disabled={busy || confirm !== null || clearAsk !== null}
+                onClick={() => {
+                  setReviewAsk(action);
+                  // A decision of the same kind starts from the current reason.
+                  setReason(action.decision !== null && item.review?.decision === action.decision ? item.review.reason : "");
+                  setReasonError(undefined);
+                }}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </section>
 
       {submission && (
         <section className="media-desk-submission" aria-labelledby={`${uid}-submission`}>
@@ -1108,6 +1317,7 @@ export function MediaDesk({
                         {item.id}
                       </Button>
                       {changesWaiting(item) && <span className="status-badge media-desk-badge">Changes waiting</span>}
+                      {item.review && <span className="status-badge media-desk-badge">{reviewDecisionText[item.review.decision]}</span>}
                     </td>
                     <td data-label="State">{stateText[item.state]}</td>
                     <td data-label="Draft file">{fileSummary(item.draft)}</td>

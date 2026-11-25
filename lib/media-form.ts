@@ -4,7 +4,7 @@
  * statement. Imports only types from the server module, so no zod reaches the browser. Relative
  * imports only, so this loads under plain `node --test`.
  */
-import type { MediaLicence, MediaLicenceUpdate } from "./request/media.ts";
+import type { MediaItem, MediaLicence, MediaLicenceUpdate } from "./request/media.ts";
 
 export const MEDIA_MAX_BYTES = 5242880;
 export const MEDIA_MAX_SIDE = 4096;
@@ -173,6 +173,55 @@ export function descriptionErrors(raw: string): string | undefined {
   }
   if ([...normaliseDescription(text)].length > DESCRIPTION_MAX) return `Description must be ${DESCRIPTION_MAX} characters or fewer.`;
   return undefined;
+}
+
+/** openapi `MediaReviewRequest.reason` (0.30.0): 1..500 code points once CRLF is LF and it is trimmed. */
+export const REVIEW_REASON_MAX = 500;
+/** The reason's length as it will be stored (normalised, in code points), for the counter. */
+export function reasonLength(raw: string) {
+  return [...normaliseDescription(raw)].length;
+}
+/** The backend's reason rule, checked before sending: newlines only, no other control character, no lone surrogate. */
+export function reasonErrors(raw: string): string | undefined {
+  const text = raw.replace(/\r\n/g, "\n");
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    const control = code < 0x20 ? code !== 0x0a : (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
+    if (control) return "The reason can't contain control characters. Line breaks are fine.";
+    if (code >= 0xd800 && code <= 0xdfff) return "The reason contains a broken character. Retype it.";
+  }
+  const length = reasonLength(text);
+  if (length < 1) return "Write a reason for the photographer.";
+  if (length > REVIEW_REASON_MAX) return `Keep the reason to ${REVIEW_REASON_MAX} characters or fewer.`;
+  return undefined;
+}
+
+export type ReviewDecision = "changes_requested" | "declined";
+export const reviewDecisionText: Record<ReviewDecision, string> = {
+  changes_requested: "Changes requested",
+  declined: "Declined",
+};
+export type ReviewAction = { decision: ReviewDecision | null; label: string };
+
+/**
+ * The review decisions an admin can send for this item now (openapi `reviewMedia`, 0.30.0). Reviewable: unverified, or
+ * published with a pending draft. `declined` only on an unverified item. A decision of the same kind replaces the
+ * reason ("Change the reason"); `changes_requested` on a declined item reopens it. Withdrawing the decision works on
+ * any item that has one, withdrawn included.
+ */
+export function reviewActions(item: Pick<MediaItem, "state" | "draftVersion" | "publishedVersion" | "review">): ReviewAction[] {
+  const current = item.review?.decision ?? null;
+  const pending = item.state === "published" && item.publishedVersion !== null && item.draftVersion > item.publishedVersion;
+  const reviewable = item.state === "unverified" || pending;
+  const actions: ReviewAction[] = [];
+  if (reviewable)
+    actions.push({
+      decision: "changes_requested",
+      label: current === "changes_requested" ? "Change the reason" : current === "declined" ? "Reopen: request changes" : "Request changes",
+    });
+  if (item.state === "unverified") actions.push({ decision: "declined", label: current === "declined" ? "Change the reason" : "Decline" });
+  if (current) actions.push({ decision: null, label: "Withdraw the decision" });
+  return actions;
 }
 
 /** Per-field messages mirroring the contract. Empty is allowed (it clears the field). Fields are trimmed; single-line only. */

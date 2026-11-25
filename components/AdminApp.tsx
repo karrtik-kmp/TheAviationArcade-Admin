@@ -981,7 +981,7 @@ export function AdminApp({
                       key={user.sessionKey}
                       sessionKey={user.sessionKey}
                       onBlocked={blockAccess}
-                      only={["unverified", "changes"]}
+                      only={["unverified", "changes", "sentBack", "declined"]}
                       eyebrow="REVIEW"
                       title="Submissions"
                       intro="Photos waiting for review, from photographers and from staff. Check each one, correct its licence, and publish it."
