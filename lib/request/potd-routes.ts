@@ -53,7 +53,8 @@ export function potdFailure(error: unknown, step: Step): never {
   if (error instanceof BackendNotConnected) throw notConnected();
   if (error instanceof BackendError) {
     const { status, code, errors, detail } = error;
-    if (status === 400) throw new HttpError(400, "The game backend rejected this request.", codes.INVALID_REQUEST);
+    // The list takes no input, so the contract gives it no 400 or 413 (openapi `listEditorialItems`): off the contract.
+    if (status === 400 && step !== "read") throw new HttpError(400, "The game backend rejected this request.", codes.INVALID_REQUEST);
     if (status === 401) throw new HttpError(401, "Your sign-in has expired. Sign in again.", codes.SIGNED_OUT);
     if (status === 403)
       throw new HttpError(403, "The game backend refused this. It needs an active admin role and a verified email.", codes.FORBIDDEN);
@@ -63,7 +64,7 @@ export function potdFailure(error: unknown, step: Step): never {
         : notFound();
     // Only a save is versioned (contract: 409 `version_conflict`); anything else is off the contract.
     if (status === 409 && step === "save") throw new HttpError(409, "Someone changed this Plane of the Day item first.", codes.VERSION_CONFLICT);
-    if (status === 413) throw new HttpError(413, "That request is too large.", codes.TOO_LARGE);
+    if (status === 413 && step !== "read") throw new HttpError(413, "That request is too large.", codes.TOO_LARGE);
     if (status === 422 && code === "content_invalid" && step !== "read") {
       // `EditorialInvalid`: every reason in `errors`, and `error.message` repeats them.
       const reasons = errors.length ? errors : detail ? [detail] : undefined;

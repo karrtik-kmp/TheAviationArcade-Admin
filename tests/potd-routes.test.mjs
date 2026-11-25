@@ -9,7 +9,7 @@ import { potdRoutes } from "../lib/request/potd-routes.ts";
 import { resolvePrincipal } from "../lib/request/principal.ts";
 import { dispatch } from "../lib/request/router.ts";
 import { routes } from "../lib/request/routes.ts";
-import { comparePotd, formOf, isDirty, photosInUse, potdErrors, saveBody } from "../lib/potd-desk.ts";
+import { comparePotd, formOf, isDirty, photosInUse, potdErrors, saveBody, storedLength } from "../lib/potd-desk.ts";
 
 // ===== Contract tests =====
 
@@ -37,6 +37,7 @@ test("the Plane of the Day parsers list the contract's keys and values", () => {
   assert.deepEqual(list(block("EditorialChange"), "required"), keys(potd.potdChangeSchema));
   assert.deepEqual(properties(block("EditorialCreateRequest")), keys(potd.potdCreateRequestSchema));
   assert.deepEqual(properties(block("EditorialSaveRequest")), keys(potd.potdSaveRequestSchema));
+  assert.deepEqual(keys(potd.potdDataRequestSchema), keys(potd.potdDataSchema), "a request carries the same data keys");
   assert.deepEqual(list(block("EditorialStatus"), "enum", 6), [...potd.potdStatuses].sort());
   assert.ok(list(block("EditorialKind"), "enum", 6).includes(potd.potdBackendKind));
   assert.match(block("EditorialItem"), /pattern: "\^ed-\[1-9\]\[0-9\]\{0,14\}\$"/);
@@ -221,6 +222,11 @@ test("refusals: the backend's reasons pass through; a conflict is a conflict; a 
     ["GET", "admin/plane-of-the-day", undefined, new BackendError(404, "not_found"), 404, "NOT_FOUND"],
     ["GET", "admin/plane-of-the-day", undefined, new BackendError(429, "rate_limited", 4), 429, "RATE_LIMITED"],
     ["GET", "admin/plane-of-the-day", undefined, new BackendError(500, "internal"), 503, "BACKEND_UNAVAILABLE"],
+    // The list takes no input: the contract gives it no 400 or 413, so either is off the contract on a read.
+    ["GET", "admin/plane-of-the-day", undefined, new BackendError(400, "invalid_request"), 502, "BACKEND_CONTRACT"],
+    ["GET", "admin/plane-of-the-day", undefined, new BackendError(413, "invalid_request"), 502, "BACKEND_CONTRACT"],
+    ["PUT", "admin/plane-of-the-day/ed-4", saveRequest(), new BackendError(400, "invalid_request"), 400, "INVALID_REQUEST"],
+    ["PUT", "admin/plane-of-the-day/ed-4", saveRequest(), new BackendError(413, "invalid_request"), 413, "TOO_LARGE"],
   ];
   for (const [method, path, body, error, status, code] of cases) {
     const { call } = harness({
@@ -234,6 +240,22 @@ test("refusals: the backend's reasons pass through; a conflict is a conflict; a 
     if (code === "RATE_LIMITED") assert.equal(res.headers.get("Retry-After"), "4");
     if (method === "GET" && code === "NOT_FOUND") assert.match(res.body.error, /does not offer the Plane of the Day desk/);
   }
+});
+
+test("an over-long text goes to the backend, whose 422 names the field; more than 20 distractors stays a 400", async () => {
+  const long = saveRequest({ data: data({ description: "a".repeat(2500) }) });
+  const reasons = ["data.description must be at most 2400 characters"];
+  const { call, calls } = harness({
+    reply: () => {
+      throw new BackendError(422, "content_invalid", undefined, reasons);
+    },
+  });
+  const res = await call("PUT", "admin/plane-of-the-day/ed-4", long);
+  assert.deepEqual([res.status, res.body.code, res.body.errors], [422, "CONTENT_INVALID", reasons]);
+  assert.equal(calls.length, 1, "the save reached the backend");
+  const many = saveRequest({ data: data({ distractors: Array(21).fill("x") }) });
+  assert.equal((await call("PUT", "admin/plane-of-the-day/ed-4", many)).status, 400);
+  assert.equal(calls.length, 1);
 });
 
 // ===== The desk's browser rules =====
@@ -265,6 +287,19 @@ test("a draft needs only a well-formed shape; scheduling needs the backend's fie
     assert.deepEqual(potdErrors({ ...form, data: { ...form.data, instagram } }), [], instagram);
   assert.deepEqual(potdErrors({ ...form, data: { ...form.data, difficulty: "Captain" } }), ["Choose a rank for the difficulty, or none."]);
   assert.deepEqual(potdErrors({ ...form, dateKey: "2026-02-29" }), ["Use a real calendar date."]);
+});
+
+test("length is measured as the backend measures it: CRLF as one, trimmed, in code points", () => {
+  assert.equal(storedLength("a\r\n".repeat(1200)), 2399);
+  assert.equal(storedLength("\u{1D538}".repeat(2400)), 2400);
+  const form = formOf(item());
+  const withText = (over) => ({ ...form, data: { ...form.data, ...over } });
+  assert.deepEqual(potdErrors(withText({ description: "a\r\n".repeat(1200) })), [], "3600 raw, 2399 stored");
+  assert.deepEqual(potdErrors(withText({ title: "\u{1D538}".repeat(2400) })), [], "4800 UTF-16 units, 2400 code points");
+  assert.deepEqual(potdErrors(withText({ title: "\u{1D538}".repeat(2401) })), ["Title is 2401 characters; the limit is 2400."]);
+  assert.deepEqual(potdErrors(withText({ credit: `${"a".repeat(2400)}\n` })), [], "a trailing newline is trimmed");
+  assert.deepEqual(potdErrors(withText({ distractors: ["", "b".repeat(2401), ""] })), ["Distractor 2 is 2401 characters; the limit is 2400."]);
+  assert.deepEqual(potdErrors(withText({ credit: "c".repeat(2500) })), ["Staff credit note is 2500 characters; the limit is 2400."]);
 });
 
 test("the dev waiver allows only an EMPTY source; a given source must still be https", () => {

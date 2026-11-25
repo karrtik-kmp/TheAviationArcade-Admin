@@ -12,6 +12,7 @@ import {
   isDirty,
   photosInUse,
   potdErrors,
+  potdFieldLabels,
   potdStatusLabel,
   type PotdData,
   type PotdForm,
@@ -26,16 +27,16 @@ const statusClass: Record<PotdStatus, string> = {
   published: "status-published",
   archived: "status-archived",
 };
-type TextKey = Exclude<keyof PotdData, "distractors">;
+type TextKey = keyof typeof potdFieldLabels;
 const textFields: { key: TextKey; label: string; long?: boolean; hint?: string }[] = [
-  { key: "title", label: "Title" },
-  { key: "aircraft", label: "Aircraft" },
-  { key: "photographer", label: "Photographer" },
-  { key: "instagram", label: "Instagram", hint: "Empty, a handle such as @name, or an https link." },
-  { key: "credit", label: "Staff credit note", hint: "Never public. Players see the photo's licence credit." },
-  { key: "factualSource", label: "Factual source", hint: "An https link. Needed before scheduling or publishing." },
-  { key: "description", label: "Description", long: true, hint: "At least 15 characters before scheduling or publishing." },
-  { key: "correctAnswer", label: "Correct answer", hint: "Editorial only; never shown to players." },
+  { key: "title", label: potdFieldLabels.title },
+  { key: "aircraft", label: potdFieldLabels.aircraft },
+  { key: "photographer", label: potdFieldLabels.photographer },
+  { key: "instagram", label: potdFieldLabels.instagram, hint: "Empty, a handle such as @name, or an https link." },
+  { key: "credit", label: potdFieldLabels.credit, hint: "Never public. Players see the photo's licence credit." },
+  { key: "factualSource", label: potdFieldLabels.factualSource, hint: "An https link. Needed before scheduling or publishing." },
+  { key: "description", label: potdFieldLabels.description, long: true, hint: "At least 15 characters before scheduling or publishing." },
+  { key: "correctAnswer", label: potdFieldLabels.correctAnswer, hint: "Editorial only; never shown to players." },
 ];
 
 /**

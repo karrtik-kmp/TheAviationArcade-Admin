@@ -227,6 +227,22 @@
     desk gives the conflict notice, reloads to version 3 and keeps the typed text; create a draft from med-2; Overview
     counts 2 items; no page overflow at 375px. Not checked: the real Backend, a real photo preview, the dev waiver on
     `dev.admin.`, Google sign-in. Nothing deployed.
+- 2026-11-25: A3 fix wave, commit 1, which fixes the review of A3.3 and A3.4. The plan is `docs/A3_FIX_WAVE.md`, revision
+  4, approved at the plan gate.
+  - Plane of the Day text over 2400 characters now reaches the backend, which refuses it with a 422 that names the
+    field. Before, the Admin refused it with a 400 that named nothing.
+    - The request schemas take plain strings, and the response schema keeps the bound.
+    - The desk's pre-check measures length the way the backend does (CRLF becomes LF, then trim, then count code
+      points). It names the field with the label the form shows.
+  - The Activity desk accepts any well-formed audit action (`^[a-z][a-z0-9_]{0,63}$`). This is deliberately looser
+    than the contract's closed list, so a new backend action no longer turns the whole log into a 502. The drift test
+    still pins the known list.
+  - A 400 or 413 when loading the Plane of the Day list is now BACKEND_CONTRACT, since that read takes no input.
+  - Verification:
+    - typecheck clean; `npm test` 413/413; `npm run build` and `npm run build:node` complete; eslint clean on the
+      changed files.
+    - Code review: SHIP.
+    - No browser walk. The changes are server-side mapping and a pre-check, and unit tests cover them.
 
 ## Next
 

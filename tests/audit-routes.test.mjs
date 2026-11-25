@@ -167,7 +167,10 @@ test("the events are read with no query and passed on as the backend gave them",
 
 test("an answer off the contract is refused whole", async () => {
   const off = [
-    { events: [event({ action: "military_approved" })] },
+    { events: [event({ action: "Media_Publish" })] },
+    { events: [event({ action: "a".repeat(65) })] },
+    { events: [event({ action: "2fa_reset" })] },
+    { events: [event({ action: "" })] },
     { events: [event({ id: "aud-0" })] },
     { events: [event({ id: "42" })] },
     { events: [event({ email: "editor@example.com" })] },
@@ -187,6 +190,16 @@ test("an answer off the contract is refused whole", async () => {
     assert.deepEqual([res.status, res.body.code], [502, "BACKEND_CONTRACT"], JSON.stringify(body)?.slice(0, 80));
     assert.equal(res.body.events, undefined);
   }
+});
+
+test("an action the Admin does not know yet is listed, not a reason to refuse the whole log", async () => {
+  // The contract's list is closed today, but the backend adds actions with new waves (0.24 and 0.25 both did).
+  for (const action of ["future_thing", "release_v2", "military_approved"]) {
+    const res = await harness({ reply: () => ({ events: [event(), event({ id: "aud-9", action })] }) }).call("GET", "admin/audit");
+    assert.equal(res.status, 200, action);
+    assert.equal(res.body.events.at(-1).action, action);
+  }
+  assert.equal(actionText("future_thing"), "future thing");
 });
 
 test("refusals: each backend failure says what it means", async () => {

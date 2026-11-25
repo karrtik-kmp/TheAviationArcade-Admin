@@ -58,6 +58,9 @@ export type AuditAction = (typeof auditActions)[number];
 /** openapi `AuditEvent.id`: `aud-<n>`, opaque; a newer event has a larger number. */
 export const auditEventIdPattern = /^aud-[1-9][0-9]*$/;
 
+/** A well-formed action name, known or not: lower case, digits and underscores, starting with a letter. */
+export const auditActionPattern = /^[a-z][a-z0-9_]{0,63}$/;
+
 /**
  * openapi `AuditEvent`. `detail` must be an object (an array or a scalar is off the contract); its keys are open. The
  * contract gives `entity` and `actor` no length; the 500-character caps are this website's defensive bound (as in the
@@ -67,7 +70,9 @@ export const auditEventSchema = z
   .object({
     id: z.string().regex(auditEventIdPattern),
     entity: z.string().max(500),
-    action: z.enum(auditActions),
+    // Deliberately looser than the contract's closed enum (`auditActions`): the backend adds actions with new waves, and
+    // one unknown row must not turn the other 49 into a 502. It is only ever shown as escaped text (`actionText`).
+    action: z.string().regex(auditActionPattern),
     actor: z.string().max(500),
     detail: z.record(z.string(), z.unknown()),
     createdAt: z.string().datetime({ offset: true }),

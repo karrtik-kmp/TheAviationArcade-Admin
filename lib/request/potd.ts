@@ -36,8 +36,13 @@ export const potdErrorCodes = {
 export const potdStatuses = ["draft", "scheduled", "published", "archived"] as const;
 export type PotdStatus = (typeof potdStatuses)[number];
 
-/** At most 2400 code points (the backend counts code points after its CRLF change and trim; over is 422, not 400). */
+/**
+ * What the backend stores: at most 2400 code points. It counts after turning CRLF into LF and trimming, and going over
+ * is 422 with the reasons, not 400, so requests carry plain strings (the 16 KB body cap bounds them) and the backend
+ * decides; only the stored values read back are bounded here.
+ */
 const text = z.string().refine((value) => [...value].length <= 2400);
+const typed = z.string();
 const isoDate = z.string().datetime({ offset: true });
 const version = z.number().int().min(1).max(2147483647);
 const mediaId = z.string().regex(mediaIdPattern);
@@ -60,6 +65,22 @@ export const potdDataSchema = z
   })
   .strict();
 export type PotdData = z.infer<typeof potdDataSchema>;
+
+/** `EditorialData` as a request carries it: the same keys, any length (see `text`). More than 20 distractors is 400. */
+export const potdDataRequestSchema = z
+  .object({
+    title: typed,
+    aircraft: typed,
+    photographer: typed,
+    instagram: typed,
+    credit: typed,
+    description: typed,
+    correctAnswer: typed,
+    distractors: z.array(typed).max(20),
+    difficulty: typed,
+    factualSource: typed,
+  })
+  .strict();
 
 /** openapi `EditorialItem` of kind `plane-of-the-day`, read as the Admin's `potd`. Another kind is off this desk's contract. */
 export const potdItemSchema = z
@@ -87,9 +108,9 @@ export const potdCreatedSchema = z.object({ item: potdItemSchema }).strict();
 export const potdChangeSchema = z.object({ changed: z.boolean(), item: potdItemSchema }).strict();
 
 /** openapi `EditorialCreateRequest`: a published photo, and optionally what staff typed. An `imageUrl` is 400. */
-export const potdCreateRequestSchema = z.object({ mediaId, data: potdDataSchema.optional() }).strict();
+export const potdCreateRequestSchema = z.object({ mediaId, data: potdDataRequestSchema.optional() }).strict();
 
 /** openapi `EditorialSaveRequest`: the whole editable state. `dateKey` absent means null. */
 export const potdSaveRequestSchema = z
-  .object({ version, status: z.enum(potdStatuses), data: potdDataSchema, dateKey: dateKey.nullable().optional() })
+  .object({ version, status: z.enum(potdStatuses), data: potdDataRequestSchema, dateKey: dateKey.nullable().optional() })
   .strict();

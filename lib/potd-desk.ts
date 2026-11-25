@@ -15,6 +15,26 @@ export const potdStatusLabel: Record<PotdStatus, string> = {
   archived: "Archived",
 };
 
+/** The text fields' names as the editor shows them, so a message names the field the way the form does. */
+export const potdFieldLabels = {
+  title: "Title",
+  aircraft: "Aircraft",
+  photographer: "Photographer",
+  instagram: "Instagram",
+  credit: "Staff credit note",
+  factualSource: "Factual source",
+  description: "Description",
+  correctAnswer: "Correct answer",
+} as const satisfies Record<Exclude<keyof PotdData, "distractors" | "difficulty">, string>;
+
+/** The backend's cap on each stored string (openapi `EditorialData`). */
+export const potdTextLimit = 2400;
+
+/** Length as the backend measures it: CRLF becomes LF, then trimmed, then code points (not UTF-16 units). */
+export function storedLength(value: string): number {
+  return [...value.replace(/\r\n/g, "\n").trim()].length;
+}
+
 /** What the editor holds: the whole editable state, as the save replaces it. */
 export type PotdForm = { status: PotdStatus; dateKey: string; data: PotdData };
 
@@ -58,6 +78,12 @@ export function potdErrors(form: PotdForm, waiver: { devDemoWaiver?: boolean } =
   if (data.difficulty && !ranks.some((rank) => rank.id === data.difficulty)) errors.push("Choose a rank for the difficulty, or none.");
   if (dateKey && !realDate(dateKey)) errors.push("Use a real calendar date.");
   if (data.distractors.length !== 3) errors.push("Give exactly three distractors.");
+  const tooLong = (label: string, value: string) => {
+    const n = storedLength(value);
+    if (n > potdTextLimit) errors.push(`${label} is ${n} characters; the limit is ${potdTextLimit}.`);
+  };
+  for (const [key, label] of Object.entries(potdFieldLabels)) tooLong(label, data[key as keyof typeof potdFieldLabels]);
+  data.distractors.forEach((value, i) => tooLong(`Distractor ${i + 1}`, value));
   if (status === "scheduled" || status === "published") {
     if (length(data.title) < 3) errors.push("Add a title of at least 3 characters.");
     if (length(data.description) < 15) errors.push("Add a description of at least 15 characters.");
