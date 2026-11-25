@@ -13,31 +13,17 @@ const context = await browser.newContext({
 try {
   const loginPage = await context.newPage();
   await signInDemoEditor(loginPage, origin);
-  await context.request.post(origin + "/api/admin/demo", {
-    headers: { Origin: origin },
-    data: {},
-  });
-  const list = await context.request.get(origin + "/api/admin/submissions");
-  assert.equal(list.status(), 200);
-  const body = await list.json();
-  const sample = body.submissions.find(
-    (s) => s.id === "demo-submission-aircraft",
-  );
-  assert.ok(sample);
-  // D-2 amended 11-04: member D1 submission routes are closed in every mode.
-  const closed = async (res, label) => {
+  // The website's own proposal routes are gone (A3 fix wave): a plain 404 for every method.
+  const gone = async (res, label) => {
     assert.equal(res.status(), 404, label);
-    assert.equal((await res.json()).code, "SUBMISSIONS_CLOSED", label);
+    assert.notEqual((await res.json().catch(() => ({}))).code, "SUBMISSIONS_CLOSED", label);
   };
-  await closed(
-    await context.request.get(origin + "/api/submissions"),
-    "member list closed",
-  );
-  await closed(
+  await gone(await context.request.get(origin + "/api/submissions"), "member list gone");
+  await gone(
     await context.request.post(origin + "/api/submissions", {
       headers: { Origin: origin, "Idempotency-Key": crypto.randomUUID() },
       multipart: {
-        data: JSON.stringify({ ...sample.data, consent: true }),
+        data: JSON.stringify({}),
         photo: {
           name: "qa.jpg",
           mimeType: "image/jpeg",
@@ -45,14 +31,14 @@ try {
         },
       },
     }),
-    "member create closed",
+    "member create gone",
   );
-  await closed(
-    await context.request.put(origin + `/api/submissions/${sample.id}`, {
+  await gone(
+    await context.request.put(origin + "/api/submissions/example", {
       headers: { Origin: origin },
-      multipart: { data: JSON.stringify(sample.data) },
+      multipart: { data: JSON.stringify({}) },
     }),
-    "member revise closed",
+    "member revise gone",
   );
   const badZone = await context.request.get(
     origin + "/api/featured?timeZone=bad-zone",
@@ -92,7 +78,7 @@ try {
     JSON.stringify(
       {
         checkedAt: new Date().toISOString(),
-        memberSubmissionRoutes: "404 SUBMISSIONS_CLOSED",
+        memberSubmissionRoutes: "404",
         contributeClosedPanel: true,
         badTimezone: 422,
         adminLightOverflow: false,
@@ -103,7 +89,7 @@ try {
     ) + "\n",
   );
   console.log(
-    "PASS closed member submission routes, closed /contribute panel, invalid timezone, light admin and 360px contributor layout",
+    "PASS removed member submission routes, closed /contribute panel, invalid timezone, light admin and 360px contributor layout",
   );
 } finally {
   await browser.close();

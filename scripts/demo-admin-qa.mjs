@@ -55,7 +55,7 @@ try {
     const account = await (await context.request.get(origin + "/api/account")).json();
     assert.equal(account.isStaff, false);
     assert.ok(account.user);
-    for (const [path, method] of [["/api/submissions", "GET"], ["/api/submissions", "POST"], ["/api/admin/submissions", "GET"], ["/api/admin/content", "GET"], ["/api/admin/demo", "POST"]]) {
+    for (const [path, method] of [["/api/admin/military", "GET"], ["/api/admin/identifier", "GET"], ["/api/admin/roles", "GET"], ["/api/admin/plane-of-the-day", "GET"]]) {
       const response = await context.request.fetch(origin + path, { method, headers: { Origin: origin } });
       assert.equal(response.status(), 403, method + " " + path);
     }
@@ -80,7 +80,7 @@ try {
     await page.waitForURL((url) => url.pathname === "/account", { waitUntil: "domcontentloaded" });
     const account = await (await context.request.get(origin + "/api/account")).json();
     assert.equal(account.user, null); assert.equal(account.isStaff, false);
-    assert.equal((await context.request.get(origin + "/api/admin/submissions")).status(), 401);
+    assert.equal((await context.request.get(origin + "/api/admin/military")).status(), 401);
   });
   assert.deepEqual(errors, []);
   await writeFile(`${output}/qa.json`, JSON.stringify({ checkedAt: new Date().toISOString(), origin,

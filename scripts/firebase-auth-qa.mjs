@@ -320,6 +320,7 @@ async function assertAccountShape(expectedUser, isStaff) {
 const closedPanel = (p) =>
   p.getByRole("heading", { name: "Photo submissions aren't open yet", exact: true });
 
+// The website no longer has proposal routes (A3 fix wave): every one is a plain 404.
 async function assertMemberSubmissionRoutesClosed(photoUrl = "/api/submissions/demo-submission-aircraft/photo") {
   for (const [path, method, data] of [
     ["/api/submissions", "GET"],
@@ -329,7 +330,7 @@ async function assertMemberSubmissionRoutesClosed(photoUrl = "/api/submissions/d
   ]) {
     const response = await api(path, method, data);
     assert.equal(response.status(), 404, `${method} ${path}`);
-    assert.equal((await response.json()).code, "SUBMISSIONS_CLOSED", `${method} ${path}`);
+    assert.notEqual((await response.json().catch(() => ({}))).code, "SUBMISSIONS_CLOSED", `${method} ${path}`);
   }
 }
 
@@ -401,10 +402,10 @@ async function main() {
       const body = await assertAccountShape(null, false);
       assert.equal(body.user, null);
       assert.equal(body.sessionKey, null);
-      const admin = await api("/api/admin/submissions");
+      const admin = await api("/api/admin/nothing");
       assert.equal(admin.status(), 401);
       const submissions = await api("/api/submissions");
-      assert.equal(submissions.status(), 401);
+      assert.equal(submissions.status(), 404);
       await page.goto(`${localOrigin}/admin`);
       await page
         .getByRole("heading", { name: "Editor sign in", exact: true })
@@ -531,8 +532,9 @@ async function main() {
       await signOutThroughUI();
       await signInThroughForm(qaUsers.editor.email);
       await assertAccountShape(qaUsers.editor, true);
-      const response = await api("/api/admin/submissions");
-      assert.equal(response.status(), 200, await response.text());
+      // An unknown admin path is a 404 only after the staff gate (a member gets 403, a guest 401).
+      const response = await api("/api/admin/nothing");
+      assert.equal(response.status(), 404, await response.text());
       await page.goto(`${localOrigin}/admin`);
       await page
         .getByRole("navigation", { name: "Admin sections" })
@@ -540,7 +542,7 @@ async function main() {
       await signOutThroughUI();
       await signInThroughForm(qaUsers.photographerA.email);
       await assertAccountShape(qaUsers.photographerA, false);
-      assert.equal((await api("/api/admin/submissions")).status(), 403);
+      assert.equal((await api("/api/admin/nothing")).status(), 403);
       await page.goto(`${localOrigin}/admin`);
       await page
         .getByRole("heading", { name: "Access unavailable", exact: true })
@@ -597,45 +599,17 @@ async function main() {
       await signInThroughForm(qaUsers.editor.email);
       const staffSnapshot = (await accountSnapshot()).body;
       assert.equal(staffSnapshot.isStaff, true);
-      // Member proposals cannot be created any more; seed the demo proposals for this write check.
-      assert.equal((await api("/api/admin/demo", "POST", {})).status(), 200);
-      const listResponse = await api("/api/admin/submissions");
-      assert.equal(listResponse.status(), 200);
-      const list = await listResponse.json();
-      const pending = list.submissions?.find(
-        (item) => item.status === "pending",
-      );
-      assert.ok(
-        pending,
-        "Need a pending local QA record to assert rejected writes do not mutate it",
-      );
-      const deniedWrite = await context.request.patch(
-        `${localOrigin}/api/admin/submissions/${pending.id}`,
-        {
-          headers: {
-            Origin: localOrigin,
-            "Content-Type": "application/json",
-            "X-Account-Session": "expired-stale-session-key",
-          },
-          data: {
-            status: "rejected",
-            checks: {},
-            note: "Must not be applied",
-            version: pending.version,
-          },
+      // A real write carrying a stale account fence: the fence (409) is checked after sign-in and before the
+      // staff gate, the origin check and the route itself, so nothing reaches the game backend.
+      const deniedWrite = await context.request.put(`${localOrigin}/api/admin/plane-of-the-day/ed-1`, {
+        headers: {
+          Origin: localOrigin,
+          "Content-Type": "application/json",
+          "X-Account-Session": "expired-stale-session-key",
         },
-      );
+        data: { note: "Must not be applied" },
+      });
       assert.equal(deniedWrite.status(), 409, await deniedWrite.text());
-      const afterWrite = await api("/api/admin/submissions");
-      assert.equal(afterWrite.status(), 200);
-      const stillPending = (await afterWrite.json()).submissions.find(
-        (item) => item.id === pending.id,
-      );
-      assert.equal(
-        stillPending.status,
-        "pending",
-        "The rejected stale-session write must not mutate server state",
-      );
 
       await page.route("**/api/account", (route) =>
         route.fulfill({

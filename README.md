@@ -29,11 +29,12 @@ router) must be made in the other as well until they're shared properly:
   `lib/product-auth.ts`, `lib/account.ts`, `lib/account-server.ts`, `lib/access.ts`,
   `app/api/auth/*`, `app/api/account`, `components/AccountSession.tsx`, `AccountControl.tsx`,
   `AccessGate.tsx`, `AuthForm.tsx`, `SignInRoute.tsx`, `SignOutPage.tsx`
-- Requests and roles: `lib/request/{router,principal,roles,backend,worker,firebase-token-verifier}.ts`,
-  `lib/errors.ts`, `lib/server.ts`, `lib/runtime/*`
+- Requests and roles: `lib/request/{router,principal,roles,backend,worker,firebase-token-verifier}.ts`
+  (the Admin's `router.ts` has no D1 deps and no `submissions/` member rule since A3.5; don't carry those back),
+  `lib/errors.ts`, `lib/runtime/*`
 - Content and data: `lib/catalog.ts`, `lib/rules.ts`, `lib/types.ts`, `lib/military.ts`,
   `lib/editorial/*`, `lib/submissions/*`, `lib/d1/*`, `lib/bunny-storage.ts`, `lib/photo-storage.ts`,
-  `lib/media-form.ts`, `lib/request/media*.ts`, `db/`, `drizzle/`, `contracts/`
+  `lib/media-form.ts`, `lib/request/media*.ts`, `drizzle/`, `contracts/`
 - Platform: `lib/paths.ts`, `lib/settings.ts`, `components/SiteLink.tsx`, `components/Providers.tsx`,
   `lib/demo-*`, `proxy.ts`, `scripts/node-server.mjs`, build/test `scripts/`, styles and fonts
 
@@ -47,8 +48,8 @@ pages and API routes are admin-only already; `proxy.ts` only sets the security h
 ### Shared state
 
 Both apps read and write the **same** data: the Bunny photo zone and the game backend. The Node build
-has no D1: the desks that still read or write it (submissions, content, military, audit) answer 503
-until they move to the backend (server hosting A3).
+has no D1, and the Admin no longer has any D1 route: every desk reads the game backend (the old `/api/submissions/*` is
+a plain 404). The D1 code left under `lib/` is the fixture set for the D1 backup export (`npm run media:export`).
 
 ## Commands
 

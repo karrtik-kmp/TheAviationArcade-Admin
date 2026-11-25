@@ -1,3 +1,4 @@
+// Kept only as fixtures for the D1 backup export tests; removed together with media-export.
 /**
  * The one D1 write pattern every desk uses: a compare-and-set that bumps `version` and stamps
  * `last_mutation`, batched with an audit event that is inserted only if that stamp landed. A

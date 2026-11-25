@@ -7,13 +7,10 @@
  *   4. a non-staff member on a staff route gets 403 (staff = an active backend admin role);
  *   5. a mutation from another origin gets 403;
  *   6. the handler runs. "owner" routes check the row owner themselves.
- * An unknown path under admin/ is checked as a staff route, and one under submissions/ as a member
- * route, before its 404, as before. Relative imports only, so the table runs under `node --test`.
+ * An unknown path under admin/ is checked as a staff route before its 404; any other unknown path
+ * is a plain 404. Relative imports only, so the table runs under `node --test`.
  */
 import { HttpError, failure, sameOrigin } from "../errors.ts";
-import type { EditorialStore } from "../editorial/store.ts";
-import type { ContentStore } from "../editorial/content.ts";
-import type { PhotoStorage } from "../photo-storage.ts";
 import { AuthUnavailable, type Bearer, type MemberPrincipal, type RequestPrincipal } from "./principal.ts";
 import type { BackendClient } from "./backend.ts";
 
@@ -21,12 +18,6 @@ export type Audience = "public" | "member" | "owner" | "staff";
 
 export type RouteDeps = {
   principal: (request: Request) => Promise<RequestPrincipal>;
-  /** Lazy, so a missing binding only fails the routes that need it (503). */
-  db: () => D1Database;
-  photos: () => PhotoStorage;
-  editorial: () => EditorialStore;
-  content: () => ContentStore;
-  references: () => Promise<unknown>;
   /** The game backend as the given member, with their own token. */
   backend: (bearer: Bearer) => BackendClient;
 };
@@ -58,7 +49,7 @@ export function match(pattern: string, path: string[]): Record<string, string> |
 }
 
 function implicitAudience(path: string[]): Audience | null {
-  return path[0] === "admin" ? "staff" : path[0] === "submissions" ? "member" : null;
+  return path[0] === "admin" ? "staff" : null;
 }
 
 async function admit(audience: Audience, request: Request, deps: RouteDeps): Promise<RequestPrincipal> {

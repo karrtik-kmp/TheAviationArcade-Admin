@@ -18,7 +18,6 @@
     "build:node": "node scripts/build-node.mjs",
     "start": "node --env-file-if-exists=.dev.vars dist-node/server.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate",
     "bunny:check": "node scripts/check-bunny-storage.mjs",
     "media:export": "node scripts/export-d1-media.mjs"
   },

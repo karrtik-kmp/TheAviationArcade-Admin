@@ -1,21 +1,19 @@
 /**
- * A3.0: the editorial workspace loads each data source on its own, so one source that fails (today: every D1 route
- * answers 503) shows its own error on the desks that need it instead of hiding the whole workspace. Desks that read
- * nothing here (Media, Store, Users load their own data from the backend) never wait on these sources.
+ * A3.0: the editorial workspace loads each data source on its own, so one source that fails shows its own error on
+ * the desks that need it instead of hiding the whole workspace. Desks that read nothing here (Submissions, Media,
+ * Store, Users load their own data from the backend) never wait on these sources. The D1 sources went in A3.5.
  */
 
-export type WorkspaceSource = "submissions" | "content" | "audit" | "military" | "identifier" | "potd";
+export type WorkspaceSource = "audit" | "military" | "identifier" | "potd";
 export type SourceState =
   | { state: "loading" }
   | { state: "ready" }
   | { state: "error"; error: string };
 export type SourceStates = Record<WorkspaceSource, SourceState>;
 
-export const workspaceSources: readonly WorkspaceSource[] = ["submissions", "content", "audit", "military", "identifier", "potd"];
+export const workspaceSources: readonly WorkspaceSource[] = ["audit", "military", "identifier", "potd"];
 
 export const sourceUrl: Record<WorkspaceSource, string> = {
-  submissions: "/api/admin/submissions",
-  content: "/api/admin/content",
   audit: "/api/admin/audit",
   military: "/api/admin/military",
   identifier: "/api/admin/identifier",
@@ -23,8 +21,6 @@ export const sourceUrl: Record<WorkspaceSource, string> = {
 };
 
 export const sourceLabel: Record<WorkspaceSource, string> = {
-  submissions: "Submissions",
-  content: "Content records",
   audit: "Activity",
   military: "Military readiness",
   identifier: "Aircraft Identifier",
@@ -32,8 +28,6 @@ export const sourceLabel: Record<WorkspaceSource, string> = {
 };
 
 const fallbackError: Record<WorkspaceSource, string> = {
-  submissions: "Could not load submissions.",
-  content: "Could not load content records.",
   audit: "Could not load the activity log.",
   military: "Could not load Military readiness.",
   identifier: "Could not load the Aircraft Identifier questions.",
@@ -42,7 +36,7 @@ const fallbackError: Record<WorkspaceSource, string> = {
 
 /** Which sources each workspace section reads. Sections not listed read none. */
 const sectionNeeds: Record<string, readonly WorkspaceSource[]> = {
-  // The review counts are read by the Overview itself (components/useReviewCounts.ts); the D1 sources are not used.
+  // The review counts are read by the Overview itself (components/useReviewCounts.ts).
   Overview: ["audit", "identifier", "potd"],
   // On the game backend's media since the A3 fix wave: the desk reads its own lists, as the Media desk does.
   Submissions: [],
@@ -60,7 +54,7 @@ export function sourcesFor(section: string): readonly WorkspaceSource[] {
 }
 
 export function allSources(state: SourceState): SourceStates {
-  return { submissions: state, content: state, audit: state, military: state, identifier: state, potd: state };
+  return { audit: state, military: state, identifier: state, potd: state };
 }
 
 /** One source's response: an HTTP status and parsed body, or a network failure (`status: 0`). */

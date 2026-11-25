@@ -20,11 +20,18 @@ function sources(dir) {
 }
 
 test("app code never imports cloudflare:workers or the retired #runtime alias", () => {
-  const offenders = ["app", "lib", "components", "db"]
+  const offenders = ["app", "lib", "components"]
     .flatMap(sources)
     .concat(["proxy.ts", "vite.config.ts"])
     .filter((file) => /["'](cloudflare:workers|#runtime)["']/.test(read(file)));
   assert.deepEqual(offenders, []);
+});
+
+test("only the D1 backup-export fixtures under lib/ still mention D1Database", () => {
+  const kept = new Set(["lib/submissions/d1.ts", "lib/d1/kernel.ts"]);
+  const offenders = sources("lib").filter((file) => !kept.has(file) && /D1Database/.test(read(file)));
+  assert.deepEqual(offenders, []);
+  for (const file of kept) assert.match(read(file), /D1Database/, file);
 });
 
 test("the build has no Cloudflare plugin and the Node build script exists", () => {

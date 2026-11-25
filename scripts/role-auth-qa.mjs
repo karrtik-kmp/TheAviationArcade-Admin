@@ -387,7 +387,7 @@ try {
       await page
         .getByRole("heading", { name: "Access unavailable", exact: true })
         .waitFor();
-      const denied = await context.request.get(url("/api/admin/submissions"));
+      const denied = await context.request.get(url("/api/admin/military"));
       assert.equal(denied.status(), 403);
       await logout();
     },
@@ -405,7 +405,7 @@ try {
         .getByText(/This demo account can view content but cannot edit/)
         .waitFor();
       assert.equal(
-        (await context.request.get(url("/api/admin/submissions"))).status(),
+        (await context.request.get(url("/api/admin/military"))).status(),
         403,
       );
       await logout();

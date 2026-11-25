@@ -306,16 +306,69 @@
       the section, the confirmed-account gate, and a tested block rule.
     - Not walked: mock roles, the demo Overview, and a count refresh after a publish.
 
+- 2026-11-25: A3 fix wave, commit 4 (B2): D1 is removed from the Admin (A3.5). This finishes the A3 plan's desk moves.
+  - **Removed.** Done by an implementer subagent and reviewed by the lead.
+    - Every D1 route: submissions, `submissions/:id/photo`, admin/submissions, admin/content, admin/demo, and
+      admin/references, which had no UI user.
+    - The D1 route deps (`db`, `photos`, `editorial`, `content`, `references`) and the `submissions/` member rule
+      in the router. An unknown `submissions/...` path is now a plain 404.
+    - `lib/server.ts`, `lib/editorial/{content-d1,d1-store,memory-store,store,content}.ts`, `db/`,
+      `drizzle.config.ts`, the `db:generate` script, and the drizzle copy in the sites vite plugin.
+    - The `submissions` and `content` workspace sources, and the dead D1 code in AdminApp. ContentWorkspace stays
+      as the view-only demo of the samples.
+    - The D1 store tests.
+    - `scripts/military-qa.mjs`, and `scripts/military-release-qa.mjs`, which was built on D1 fixtures and the
+      pre-A3.1 API. `tests/military-routes.test.mjs` covers releases.
+  - **QA scripts.**
+    - The D1 steps are removed.
+    - The admin probes now use surviving staff routes.
+    - `/api/submissions*` is expected to answer a plain 404.
+    - A real cross-origin write check (POST to Plane of the Day, 403) replaces the D1 one.
+    - The stale-fence check is a real Plane of the Day PUT, which answers 409.
+  - **Kept until the user confirms the D1 backup (decision D5).**
+    - The export tool: `npm run media:export`, `scripts/media-export/*` and `lib/submissions/export.ts`.
+    - Its test fixtures: `lib/submissions/d1.ts`, `lib/d1/kernel.ts`, `drizzle/0000_*.sql` and
+      `tests/support/d1-sqlite.mjs`.
+    - Bunny storage.
+    - Wrangler and miniflare, workers-types, and the Cloudflare config and settings.
+    - `drizzle-orm` and `drizzle-kit` stay in package.json, unused. The implementer's lockfile rewrite was too
+      large to take on this drive, so they go with media-export.
+  - **Guard test.** `tests/node-hosting.test.mjs` checks that no `D1Database` appears under `lib/` outside the two
+    fixtures.
+  - **Verification.**
+    - typecheck clean; `npm test` 389/389 (the D1 store tests are gone); `npm run build` and `npm run build:node`
+      complete.
+    - The export tests pass 66/66 offline.
+    - eslint: no new errors, and 7 old unused-variable warnings are gone.
+    - The browser walk on the local fake backend shows the Overview, Submissions, Plane of the Day, Activity and Media
+      unchanged.
+    - Code review: SHIP. Its minors are fixed: the fence comment, the cross-origin check, these TASKS entries, the
+      router-copy note in the README, and the comment wrap.
+    - The QA scripts were parse-checked only, not run.
+
 ## Next
 
-- [ ] A3: move the desks off D1 onto the backend, per `docs/A3_PLAN.md`. A3.0 to A3.4 are done (A3.3 and A3.4 on
-      `feat/a3-desks`); next removing D1 (A3.5).
+- [x] A3: move the desks off D1 onto the backend, per `docs/A3_PLAN.md`. A3.0 to A3.5 are done on `feat/a3-desks`
+      (with the A3 fix wave, `docs/A3_FIX_WAVE.md`). Not pushed.
+- [ ] Once the user confirms the D1 backup exists: remove media-export and its whole keep list in one commit
+      (`scripts/media-export/*`, `scripts/export-d1-media.mjs`, `lib/submissions/{export,d1}.ts`, `lib/d1/`,
+      `drizzle/`, `tests/support/d1-sqlite.mjs`, the media-export tests, `reviewError`/`ReviewChecks` if unused,
+      wrangler and miniflare, `@cloudflare/workers-types`, `drizzle-orm`, `drizzle-kit`,
+      `config/cloudflare-prototype.json`, `scripts/cloudflare-local-settings.mjs`, `.dev.vars.cloudflare.example`,
+      `docs/MEDIA_PLAN.md:219`). Never touch `.wrangler/state` or the D1 database itself.
+- [ ] `data/reference-airports.json` and `scripts/fetch-reference-data.py` have no reader in the Admin since
+      `admin/references` went (A3.5): delete them, or keep them if the website uses its own copy.
+- [ ] Backend 0.30.0 (proposed, needs the user's OK): photo review feedback (decline / request changes with a reason
+      the photographer sees). The Admin adds the buttons when it lands. With it: `AuditEvent.action` as an open set, a
+      `hasMore`/total on `listMedia`, a list thumbnail.
+- [ ] `lib/request/military.ts:51,57`: `.max(2400)` counts UTF-16 units on the raw text; check against the Military
+      contract wording.
+- [ ] Walk mock roles (Submissions hidden, no review counts) and the demo Overview (one stat, full row).
 - [ ] Walk the Plane of the Day desk against the real Backend's demo seed (`pod-4` … `pod-8`): publish the photos in
       Media, re-run the seed, then schedule one; and with `DEV_DEMO_WAIVER=dev-demo` on `dev.admin.`.
 - [ ] Walk the Activity desk with `ROLES_SOURCE=backend` against a local or the dev backend: waiver flags on a waived
       photo publish and a Plane of the Day save, and the actor shown as a principal.
-- [ ] `scripts/military-qa.mjs` is stale since A3.1 (D1-shaped Military writes) and its audit check reads the old D1
-      fields (`entity_id`, `military_approved`); rewrite it against the backend desks or remove it in A3.5.
+- [x] `scripts/military-qa.mjs` was stale since A3.1; removed in A3.5 with `scripts/military-release-qa.mjs`.
 - [ ] Ask (user): keep the backend's editorial `identifier` kind (W1) as a second Identifier view, or drop it?
 - [ ] Walk the Military and Aircraft Identifier desks on `dev.admin.` against the live dev backend after deploy (the
       dev Admin's `GAME_API_BASE_URL` is the loopback backend, or `https://dev.api.playairplanegames.com/api`).

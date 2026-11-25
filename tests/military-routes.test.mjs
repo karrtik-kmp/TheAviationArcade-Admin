@@ -111,19 +111,6 @@ function harness({ reply = () => ({}), roles = { status: "ok", roles: [adminRow]
         projectId: project,
         demoUid: "demo-uid",
       }),
-    db: () => {
-      throw new Error("no D1 in the Military routes");
-    },
-    photos: () => {
-      throw new Error("no photo storage in the Military routes");
-    },
-    editorial: () => {
-      throw new Error("no editorial store in the Military routes");
-    },
-    content: () => {
-      throw new Error("no content store in the Military routes");
-    },
-    references: async () => ({}),
     backend: () => {
       const run = async (method, path, body) => {
         calls.push({ method, path, body });

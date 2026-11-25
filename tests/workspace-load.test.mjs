@@ -10,67 +10,59 @@ import {
 } from "../lib/workspace-load.ts";
 
 const ok = (body = {}) => ({ status: 200, body });
-const d1Down = {
+const down = {
   status: 503,
-  body: { error: "This desk is moving to the game backend and is unavailable for now." },
+  body: { error: "The game backend is unavailable for now." },
 };
 const results = (overrides = {}) => ({
-  submissions: ok({ submissions: [] }),
-  content: ok({ records: [] }),
   audit: ok({ events: [] }),
   military: ok({ items: [] }),
   identifier: ok({ items: [] }),
   potd: ok({ items: [] }),
   ...overrides,
 });
-const allD1Down = results({ submissions: d1Down, content: d1Down, audit: d1Down, military: d1Down });
+const allDown = results({ audit: down, military: down, identifier: down, potd: down });
 
-test("every D1 source failing leaves the backend desks reachable", () => {
-  assert.equal(blockingStatus(allD1Down), null);
-  const states = sourceStates(allD1Down);
-  for (const section of ["Media", "Store", "Users"]) {
+test("every source failing leaves the desks that read their own data reachable", () => {
+  assert.equal(blockingStatus(allDown), null);
+  const states = sourceStates(allDown);
+  for (const section of ["Media", "Store", "Users", "Submissions"]) {
     assert.deepEqual(sourcesFor(section), []);
     assert.deepEqual(sectionView(section, states), { view: "ready", unavailable: [] });
   }
 });
 
 test("a desk shows its own source's error, with the server's message", () => {
-  const states = sourceStates(results({ content: d1Down }));
-  assert.deepEqual(sectionView("Aircraft Identifier", states), { view: "ready", unavailable: [] }, "on the backend since A3.2");
-  assert.equal(sectionView("Aircraft Identifier", sourceStates(results({ identifier: d1Down }))).view, "error");
-  assert.deepEqual(sectionView("Plane of the Day", states), { view: "ready", unavailable: [] }, "on the backend since A3.3");
-  const view = sectionView("Plane of the Day", sourceStates(results({ potd: d1Down })));
+  assert.equal(sectionView("Aircraft Identifier", sourceStates(results({ identifier: down }))).view, "error");
+  assert.deepEqual(sectionView("Aircraft Identifier", sourceStates(results({ potd: down }))), { view: "ready", unavailable: [] });
+  const view = sectionView("Plane of the Day", sourceStates(results({ potd: down })));
   assert.equal(view.view, "error");
   assert.deepEqual(view.errors.map(({ source }) => source), ["potd"]);
-  assert.equal(view.errors[0].error, d1Down.body.error);
-  assert.deepEqual(sectionView("Submissions", states), { view: "ready", unavailable: [] });
-  assert.deepEqual(sectionView("Activity", states), { view: "ready", unavailable: [] });
+  assert.equal(view.errors[0].error, down.body.error);
+  assert.deepEqual(sectionView("Activity", sourceStates(results({ potd: down }))), { view: "ready", unavailable: [] });
 });
 
-test("Military reads only its own backend source since A3.1, so the D1 desks failing don't hide it", () => {
+test("Military reads only its own backend source", () => {
   assert.deepEqual(sourcesFor("Military readiness"), ["military"]);
-  const d1Only = results({ submissions: d1Down, content: d1Down, audit: d1Down });
-  assert.deepEqual(sectionView("Military readiness", sourceStates(d1Only)), { view: "ready", unavailable: [] });
-  assert.equal(sectionView("Military readiness", sourceStates(results({ military: d1Down }))).view, "error");
+  assert.deepEqual(sectionView("Military readiness", sourceStates(results({ audit: down, potd: down }))), {
+    view: "ready",
+    unavailable: [],
+  });
+  assert.equal(sectionView("Military readiness", sourceStates(results({ military: down }))).view, "error");
 });
 
 test("the Overview renders with what loaded and lists what didn't", () => {
-  const view = sectionView("Overview", sourceStates(results({ potd: d1Down, audit: d1Down })));
+  const view = sectionView("Overview", sourceStates(results({ potd: down, audit: down })));
   assert.equal(view.view, "ready");
   assert.deepEqual(view.unavailable.map(({ source }) => source), ["audit", "potd"]);
-});
-
-test("the Overview no longer reads or reports the D1 sources (A3 fix wave)", () => {
   assert.deepEqual([...sourcesFor("Overview")], ["audit", "identifier", "potd"]);
-  const view = sectionView("Overview", sourceStates(results({ submissions: d1Down, content: d1Down })));
-  assert.deepEqual(view, { view: "ready", unavailable: [] }, "D1 down leaves the Overview whole");
 });
 
 test("a section waits while any of its sources loads", () => {
-  const states = { ...sourceStates(results()), submissions: { state: "loading" }, audit: { state: "loading" } };
-  // Submissions reads the game backend's media itself since the A3 fix wave, so the D1 source no longer holds it up.
+  const states = { ...sourceStates(results()), audit: { state: "loading" } };
   assert.deepEqual(sectionView("Submissions", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Overview", states), { view: "loading" });
+  assert.deepEqual(sectionView("Activity", states), { view: "loading" });
   assert.deepEqual(sectionView("Plane of the Day", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Military readiness", states), { view: "ready", unavailable: [] });
   assert.deepEqual(sectionView("Media", allSources({ state: "loading" })), { view: "ready", unavailable: [] });
@@ -79,10 +71,10 @@ test("a section waits while any of its sources loads", () => {
 test("an account mismatch from any one source blocks the whole workspace", () => {
   assert.equal(blockingStatus(results({ audit: { status: 401, body: {} } })), 401);
   assert.equal(blockingStatus(results({ military: { status: 403, body: {} } })), 403);
-  assert.equal(blockingStatus(results({ content: { status: 409, body: { code: "ACCOUNT_CHANGED" } } })), 409);
+  assert.equal(blockingStatus(results({ potd: { status: 409, body: { code: "ACCOUNT_CHANGED" } } })), 409);
   // Even when every other source fails differently.
-  assert.equal(blockingStatus({ ...allD1Down, submissions: { status: 401, body: {} } }), 401);
-  assert.equal(blockingStatus(results({ content: { status: 409, body: { code: "VERSION_CONFLICT" } } })), null);
+  assert.equal(blockingStatus({ ...allDown, identifier: { status: 401, body: {} } }), 401);
+  assert.equal(blockingStatus(results({ potd: { status: 409, body: { code: "VERSION_CONFLICT" } } })), null);
 });
 
 test("network failures and bodies without a message get a per-source fallback", () => {
@@ -90,9 +82,9 @@ test("network failures and bodies without a message get a per-source fallback", 
   assert.equal(states.audit.state, "error");
   assert.equal(states.audit.error, "Could not load the activity log.");
   assert.equal(states.military.error, "Could not load Military readiness.");
-  assert.equal(states.content.state, "ready");
+  assert.equal(states.potd.state, "ready");
 });
 
 test("every source is listed once", () => {
-  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "content", "identifier", "military", "potd", "submissions"]);
+  assert.deepEqual([...new Set(workspaceSources)].sort(), ["audit", "identifier", "military", "potd"]);
 });

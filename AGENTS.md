@@ -29,9 +29,10 @@ with README.md (what was split and which modules are copies) and docs/TASKS.md, 
 - App paths are unprefixed (`/admin`); use `SiteLink`, `sitePath`, `navigateTo`. Links to the public
   website use `PUBLIC_SITE_URL` (`lib/website-url.ts`), never paths on the admin host.
 - The Admin runs as a Node server, not Cloudflare Workers. Server settings come from the process
-  environment through `lib/settings.ts` only (`web.env.example`). There is no D1: its routes answer 503.
+  environment through `lib/settings.ts` only (`web.env.example`). There is no D1: its desks and routes are
+  gone (A3.5); only the D1 backup export (`npm run media:export`) still reads it, until the backup is confirmed.
 - The website repo has copies of the common modules (README.md lists them). A fix to auth, session,
-  roles or the router goes to both repos. D1 schema changes go to both.
+  roles or the router goes to both repos.
 - Use only client-supplied content; don't invent questions, answers, awards or thresholds.
 
 Make focused commits, record actual verification, update docs/TASKS.md. Never rewrite published history.

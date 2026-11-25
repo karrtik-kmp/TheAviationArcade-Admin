@@ -97,19 +97,6 @@ function harness({ reply = () => ({}), roles = { status: "ok", roles: [adminRow]
         projectId: project,
         demoUid: "demo-uid",
       }),
-    db: () => {
-      throw new Error("no D1 here");
-    },
-    photos: () => {
-      throw new Error("no photo storage here");
-    },
-    editorial: () => {
-      throw new Error("no editorial store here");
-    },
-    content: () => {
-      throw new Error("no content store here");
-    },
-    references: async () => ({}),
     backend: () => {
       const run = async (method, path, body) => {
         calls.push({ method, path, body });

@@ -189,9 +189,6 @@ const { dispatch } = await import("../lib/request/router.ts");
 const { routes } = await import("../lib/request/routes.ts");
 const { resolvePrincipal, accountSessionKey } = await import("../lib/request/principal.ts");
 const { BackendError, BackendNotConnected } = await import("../lib/request/backend.ts");
-const { d1Sqlite } = await import("./support/d1-sqlite.mjs");
-const { memoryEditorialStore } = await import("../lib/editorial/memory-store.ts");
-const { d1ContentStore } = await import("../lib/editorial/content-d1.ts");
 
 const project = "demo-airplane-games";
 const origin = "http://site.test";
@@ -241,8 +238,6 @@ function fakeBackend(reply) {
 /** `roles`: "backend" (the role map), "mock", "down" or "not-connected". */
 function harness({ roles = "backend", reply = () => pack } = {}) {
   const backend = fakeBackend((call) => reply(call));
-  const db = d1Sqlite();
-  const editorial = memoryEditorialStore();
   const handle = dispatch(routes, {
     principal: (request) =>
       resolvePrincipal(request.headers, {
@@ -263,13 +258,6 @@ function harness({ roles = "backend", reply = () => pack } = {}) {
         projectId: project,
         demoUid: "demo-uid",
       }),
-    db: () => db,
-    photos: () => {
-      throw new Error("photo storage is not used in these tests");
-    },
-    editorial: () => editorial,
-    content: () => d1ContentStore(db),
-    references: async () => ({ airports: [] }),
     backend: (bearer) => backend.as(bearer),
   });
   /** `body`: an object (JSON), a string (raw text) or a Uint8Array (raw). */

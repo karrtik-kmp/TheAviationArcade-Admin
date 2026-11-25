@@ -28,8 +28,6 @@ async function api(path, method = "GET", data) {
   });
   return { status: response.status(), body: await response.json() };
 }
-let createdId;
-const demoTitle = "KLM on approach [Demo]";
 try {
   await check("Homepage desktop and theme switch", async () => {
     await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 90000 });
@@ -118,60 +116,35 @@ try {
   await check(
     "Anonymous API is denied and local demo staff can sign in",
     async () => {
-      assert.equal((await api("/api/admin/submissions")).status, 401);
+      assert.equal((await api("/api/admin/military")).status, 401);
+      // A write from another origin is refused end to end (403), whatever the route would do.
+      const crossOrigin = await page.context().request.post(`${origin}/api/admin/plane-of-the-day`, {
+        headers: { Origin: "https://untrusted.example", "Content-Type": "application/json" },
+        data: {},
+      });
+      assert.ok([401, 403].includes(crossOrigin.status()), `cross-origin write answered ${crossOrigin.status()}`);
       await signInDemoEditor(page, origin);
       await page
         .getByRole("heading", { name: "Good to have you back." })
         .waitFor({ timeout: 60000 });
-      await page
-        .getByRole("button", { name: "Load demo data", exact: true })
-        .click();
-      await page
-        .getByText("Demo records loaded; these cannot be published.")
-        .waitFor();
       await page.screenshot({
         path: "docs/evidence/admin-overview-dark.png",
         fullPage: true,
       });
-      const demo = await api("/api/admin/submissions");
-      assert.equal(demo.status, 200);
-      assert.ok(
-        demo.body.submissions.some((s) => s.id === "demo-submission-aircraft"),
-      );
-      assert.equal(
-        (
-          await context.request.post(origin + "/api/admin/demo", {
-            headers: { Origin: "https://untrusted.example" },
-          })
-        ).status(),
-        403,
-      );
     },
   );
   await check(
-    "Member submission routes are closed and /contribute shows the closed panel",
+    "The website's own submission routes are gone (plain 404)",
     async () => {
       for (const [path, method] of [
         ["/api/submissions", "GET"],
         ["/api/submissions", "POST"],
-        ["/api/submissions/demo-submission-aircraft", "PUT"],
+        ["/api/submissions/example", "PUT"],
       ]) {
-        const closed = await api(path, method, method === "GET" ? undefined : {});
-        assert.equal(closed.status, 404, method + " " + path);
-        assert.equal(closed.body.code, "SUBMISSIONS_CLOSED", method + " " + path);
+        const gone = await api(path, method, method === "GET" ? undefined : {});
+        assert.equal(gone.status, 404, method + " " + path);
+        assert.notEqual(gone.body.code, "SUBMISSIONS_CLOSED", method + " " + path);
       }
-      // Query params are ignored; there is no form to fill in any more.
-      await page.goto(origin + "/contribute?game=aircraft-identifier", {
-        waitUntil: "domcontentloaded",
-      });
-      await page
-        .getByRole("heading", { name: "Photo submissions aren't open yet" })
-        .waitFor();
-      assert.equal(await page.locator("#field-photo").count(), 0);
-      await page.screenshot({
-        path: "docs/evidence/contributor-closed-dark.png",
-        fullPage: true,
-      });
     },
   );
   await check(
@@ -187,70 +160,7 @@ try {
     },
   );
   await check(
-    "Staff review of a seeded demo proposal: checks, changes, stale version",
-    async () => {
-      // Member proposals can no longer be created on the website (D-2), so review the proposal
-      // that POST /api/admin/demo seeds. Demo proposals can never be approved or published.
-      createdId = "demo-submission-aircraft";
-      await page.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
-      await page
-        .getByRole("heading", { name: "Good to have you back." })
-        .waitFor();
-      await page
-        .getByRole("navigation", { name: "Admin sections" })
-        .getByRole("button", { name: /^Submissions/ })
-        .click();
-      await page.locator("tr").filter({ hasText: demoTitle }).click();
-      await page
-        .getByRole("button", { name: "Approve submission", exact: true })
-        .click();
-      // The seeded demo proposal has no rights evidence, so approval stops at that rule first.
-      await page
-        .getByText("Record permission or license evidence before approval.")
-        .waitFor();
-      await page
-        .locator(".review-form textarea")
-        .fill("Please add a more precise location for this local test.");
-      const [changeResponse] = await Promise.all([
-        page.waitForResponse(
-          (response) =>
-            response.url() === `${origin}/api/admin/submissions/${createdId}` &&
-            response.request().method() === "PATCH",
-        ),
-        page
-          .getByRole("button", { name: "Request changes", exact: true })
-          .click(),
-      ]);
-      assert.equal(changeResponse.status(), 200, await changeResponse.text());
-      const owned = (await api("/api/admin/submissions")).body.submissions.find(
-        (s) => s.id === createdId,
-      );
-      assert.equal(owned.status, "changes_requested");
-      // Approval is refused server-side: the demo proposal has no rights evidence or source.
-      const approve = await api(`/api/admin/submissions/${createdId}`, "PATCH", {
-        status: "approved",
-        note: "",
-        checks: {
-          identity: true,
-          quality: true,
-          credit: true,
-          rights: true,
-          category: true,
-        },
-        version: owned.version,
-      });
-      assert.equal(approve.status, 422);
-      const stale = await api(`/api/admin/submissions/${createdId}`, "PATCH", {
-        status: "rejected",
-        note: "Stale revision should be refused.",
-        checks: owned.checks,
-        version: owned.version - 1,
-      });
-      assert.equal(stale.status, 409);
-    },
-  );
-  await check(
-    "Mobile admin fits viewport and has a usable review list",
+    "Mobile admin fits viewport",
     async () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(origin + "/admin", { waitUntil: "domcontentloaded" });

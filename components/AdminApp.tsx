@@ -28,7 +28,7 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { AccountControl } from "@/components/AccountControl";
 import { useAccountSession } from "@/components/AccountSession";
@@ -52,19 +52,7 @@ import {
   accountHeaders,
   accountSignInPath,
 } from "@/lib/account";
-import type {
-  EditorialData,
-  EditorialRecord,
-  ReviewChecks,
-  Submission,
-  SubmissionStatus,
-} from "@/lib/types";
-import {
-  categoryNames,
-  channelNames,
-  editorialErrors,
-  reviewError,
-} from "@/lib/rules";
+import type { EditorialData, EditorialRecord } from "@/lib/types";
 import { sampleEditorialRecords } from "@/lib/demo-samples";
 import {
   rankName,
@@ -114,13 +102,6 @@ const navItems: { label: Section; icon: typeof SquaresFour }[] = [
   { label: "Users", icon: UsersThree },
   { label: "Activity", icon: ClockCounterClockwise },
 ];
-const checkNames: { key: keyof ReviewChecks; label: string }[] = [
-  { key: "identity", label: "Aircraft identity is supported" },
-  { key: "quality", label: "Photo quality is suitable" },
-  { key: "credit", label: "Photographer credit is correct" },
-  { key: "rights", label: "Usage rights are documented" },
-  { key: "category", label: "Submission category is accurate" },
-];
 const ranks = rankNames;
 
 function prettyDate(value: string) {
@@ -132,15 +113,6 @@ function prettyDate(value: string) {
         dateStyle: "medium",
         timeStyle: value.includes("T") ? "short" : undefined,
       }).format(date);
-}
-function emptyChecks(): ReviewChecks {
-  return {
-    identity: false,
-    quality: false,
-    credit: false,
-    rights: false,
-    category: false,
-  };
 }
 const emptyMilitary: MilitaryDesk = {
   items: [],
@@ -226,7 +198,6 @@ export function AdminApp({
       ?.querySelector('[aria-current="page"]')
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [section]);
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [records, setRecords] = useState<EditorialRecord[]>([]);
   const [military, setMilitary] = useState<MilitaryDesk>(emptyMilitary);
   /** Counts Military reloads, so an older answer that lands late never replaces a newer one. */
@@ -241,12 +212,6 @@ export function AdminApp({
   );
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [search, setSearch] = useState("");
-  const [checks, setChecks] = useState<ReviewChecks>(emptyChecks());
-  const [reviewNote, setReviewNote] = useState("");
   const [recordId, setRecordId] = useState("");
   const [recordData, setRecordData] = useState<EditorialData | null>(null);
   const [dateKey, setDateKey] = useState("");
@@ -254,7 +219,6 @@ export function AdminApp({
 
   const clearPrivateData = useCallback(() => {
     drafts.reset();
-    setSubmissions([]);
     setRecords([]);
     setMilitary(emptyMilitary);
     setIdentifier([]);
@@ -262,11 +226,8 @@ export function AdminApp({
     // A draft opened on arrival belongs to the account that made it.
     setPotdArrival("");
     setEvents([]);
-    setSelectedId("");
     setRecordId("");
     setRecordData(null);
-    setChecks(emptyChecks());
-    setReviewNote("");
     setSources(allSources({ state: "loading" }));
     setBusy(false);
   }, [drafts]);
@@ -366,19 +327,7 @@ export function AdminApp({
       states[source].state === "ready"
         ? ((results[source].body ?? {}) as Record<string, unknown>)
         : {};
-    const submissionBody = body("submissions");
-    const contentBody = body("content");
     const auditBody = body("audit");
-    setSubmissions(
-      Array.isArray(submissionBody.submissions)
-        ? (submissionBody.submissions as Submission[])
-        : [],
-    );
-    setRecords(
-      Array.isArray(contentBody.records)
-        ? (contentBody.records as EditorialRecord[])
-        : [],
-    );
     applyMilitary(body("military"));
     applyIdentifier(body("identifier"));
     applyPotd(body("potd"));
@@ -407,38 +356,8 @@ export function AdminApp({
     drafts,
   ]);
 
-  const selected =
-    submissions.find((submission) => submission.id === selectedId) ?? null;
   const selectedRecord =
     records.find((record) => record.id === recordId) ?? null;
-  const pending = submissions.filter(
-    (item) => item.status === "pending",
-  ).length;
-  const returned = submissions.filter(
-    (item) => item.status === "changes_requested",
-  ).length;
-  const filteredSubmissions = useMemo(
-    () =>
-      submissions.filter((item) => {
-        const query = search.trim().toLowerCase();
-        return (
-          (filterStatus === "all" || item.status === filterStatus) &&
-          (filterCategory === "all" || item.data.category === filterCategory) &&
-          (!query ||
-            [
-              item.data.title,
-              item.data.photographer,
-              item.data.aircraft,
-              item.data.registration,
-              item.data.location,
-            ]
-              .join(" ")
-              .toLowerCase()
-              .includes(query))
-        );
-      }),
-    [submissions, filterStatus, filterCategory, search],
-  );
 
   /** Reports a request that did not succeed. A stale response is dropped silently. */
   function failed(outcome: Outcome, refreshOnConflict = false) {
@@ -468,13 +387,6 @@ export function AdminApp({
         setNotice({ kind: "error", text: outcome.message });
     }
   }
-  function openSubmission(item: Submission) {
-    setSelectedId(item.id);
-    drafts.open(`submission:${item.id}`, item.version);
-    setChecks({ ...emptyChecks(), ...item.checks });
-    setReviewNote(item.reviewNote ?? "");
-    setNotice(null);
-  }
   function openRecord(record: EditorialRecord) {
     setRecordId(record.id);
     drafts.open(`content:${record.id}`, record.version);
@@ -482,165 +394,6 @@ export function AdminApp({
     setDateKey(record.dateKey ?? new Date().toLocaleDateString("en-CA"));
     setNotice(null);
   }
-  async function review(next: SubmissionStatus) {
-    if (!selected) return;
-    const localError = reviewError(
-      selected.data,
-      selected.status,
-      next,
-      checks,
-      reviewNote,
-    );
-    if (localError) {
-      setNotice({ kind: "error", text: localError });
-      return;
-    }
-    setBusy(true);
-    setNotice(null);
-    try {
-      const outcome = await drafts.save(
-        `submission:${selected.id}`,
-        "PATCH",
-        `/api/admin/submissions/${selected.id}`,
-        { status: next, checks, note: reviewNote },
-        (body) => (body.submission as Submission | undefined)?.version,
-      );
-      if (outcome.kind !== "ok") return failed(outcome, true);
-      const updated = outcome.body.submission as Submission;
-      setSubmissions((previous) =>
-        previous.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      setNotice({
-        kind: "success",
-        text:
-          next === "approved"
-            ? "Submission approved for editorial use. No game content was published."
-            : next === "rejected"
-              ? "Submission rejected."
-              : "Changes requested from the contributor.",
-      });
-      if (next !== "approved") setSelectedId("");
-      await fetchAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function createContent(
-    payload:
-      | { kind: "identifier" | "potd"; sourceId: string }
-      | { kind: "identifier" | "potd"; sample: true },
-  ) {
-    const outcome = await drafts.request("POST", "/api/admin/content", payload);
-    if (outcome.kind !== "ok") {
-      failed(outcome);
-      return null;
-    }
-    const created = outcome.body.record as EditorialRecord;
-    setRecords((previous) => [
-      created,
-      ...previous.filter((item) => item.id !== created.id),
-    ]);
-    openRecord(created);
-    return created;
-  }
-  async function createFromSubmission(kind: "identifier" | "potd") {
-    if (!selected) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      if (await createContent({ kind, sourceId: selected.id }))
-        setSection(
-          kind === "identifier" ? "Aircraft Identifier" : "Plane of the Day",
-        );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function createSample(kind: "identifier" | "potd") {
-    setBusy(true);
-    setNotice(null);
-    try {
-      await createContent({ kind, sample: true });
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function loadDemoData() {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const outcome = await drafts.request("POST", "/api/admin/demo", {});
-      if (outcome.kind !== "ok") return failed(outcome);
-      await fetchAll();
-      setNotice({
-        kind: "success",
-        text: "Demo records loaded; these cannot be published.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function saveRecord(status: EditorialRecord["status"]) {
-    if (!selectedRecord || !recordData) return;
-    if (status === "scheduled" || status === "published") {
-      const errors = editorialErrors(selectedRecord.kind, recordData, { devDemoWaiver });
-      if (errors.length) {
-        setNotice({ kind: "error", text: errors.join(" ") });
-        return;
-      }
-      if (!selectedRecord.sourceId) {
-        setNotice({
-          kind: "error",
-          text: "This sample is preview-only. Create content from an approved submission with the required rights to publish.",
-        });
-        return;
-      }
-    }
-    const effectiveStatus =
-      status === "published" && selectedRecord.kind === "potd"
-        ? "scheduled"
-        : status;
-    const effectiveDate =
-      selectedRecord.kind === "potd" && status === "published"
-        ? new Date().toLocaleDateString("en-CA")
-        : dateKey;
-    setBusy(true);
-    setNotice(null);
-    try {
-      const outcome = await drafts.save(
-        `content:${selectedRecord.id}`,
-        "PUT",
-        `/api/admin/content/${selectedRecord.id}`,
-        {
-          data: recordData,
-          status: effectiveStatus,
-          dateKey: effectiveStatus === "scheduled" ? effectiveDate : dateKey,
-        },
-        (body) => (body.record as EditorialRecord | undefined)?.version,
-      );
-      if (outcome.kind !== "ok") return failed(outcome, true);
-      const updated = outcome.body.record as EditorialRecord;
-      setRecords((previous) =>
-        previous.map((record) => (record.id === updated.id ? updated : record)),
-      );
-      setRecordData(seedData(updated));
-      setDateKey(updated.dateKey ?? effectiveDate);
-      setNotice({
-        kind: "success",
-        text:
-          selectedRecord.kind === "identifier" && status === "published"
-            ? "Marked prototype-ready. This does not connect to the game backend."
-            : status === "published"
-              ? "Plane of the Day is scheduled for today in your local calendar."
-              : status === "archived"
-                ? "Content archived."
-                : "Draft saved.",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   /** The Military desk's read (A3.1): the backend items with the release state. */
   function applyMilitary(body: Record<string, unknown>) {
     const pointer =
@@ -1101,7 +854,6 @@ export function AdminApp({
                   onClick={() => {
                     setSection(label);
                     setPotdArrival("");
-                    setSelectedId("");
                     setRecordId("");
                     setNotice(null);
                   }}
@@ -1298,12 +1050,8 @@ export function AdminApp({
                       setDateKey={setDateKey}
                       onOpen={openRecord}
                       onChange={setRecordData}
-                      onSave={saveRecord}
-                      onCreateSample={() => void createSample(contentKind)}
-                      busy={busy}
                       showArchived={showArchived}
                       setShowArchived={setShowArchived}
-                      readOnly={readOnly}
                     />
                   )}
                   {section === "Military readiness" && !readOnly && (
@@ -1553,418 +1301,7 @@ function Stat({
   );
 }
 
-function Submissions({
-  submissions,
-  selected,
-  status,
-  category,
-  search,
-  setStatus,
-  setCategory,
-  setSearch,
-  onOpen,
-  checks,
-  setChecks,
-  note,
-  setNote,
-  onReview,
-  onCreate,
-  busy,
-}: {
-  submissions: Submission[];
-  selected: Submission | null;
-  status: string;
-  category: string;
-  search: string;
-  setStatus: (value: string) => void;
-  setCategory: (value: string) => void;
-  setSearch: (value: string) => void;
-  onOpen: (item: Submission) => void;
-  checks: ReviewChecks;
-  setChecks: (value: ReviewChecks) => void;
-  note: string;
-  setNote: (value: string) => void;
-  onReview: (value: SubmissionStatus) => void;
-  onCreate: (kind: "identifier" | "potd") => void;
-  busy: boolean;
-}) {
-  const [compactDetail, setCompactDetail] = useState(Boolean(selected));
-  return (
-    <>
-      <div className="admin-heading">
-        <div>
-          <p className="eyebrow">COMMUNITY PHOTOGRAPHY</p>
-          <h1>Submissions</h1>
-          <p>
-            Verify the photo, its facts and each proposed use before approving.
-          </p>
-        </div>
-        <span className="admin-total">{submissions.length} shown</span>
-      </div>
-      <div className="admin-toolbar">
-        <Input
-          aria-label="Search submissions"
-          placeholder="Search title, aircraft, photographer…"
-          value={search}
-          onChange={(_, data) => setSearch(data.value)}
-          contentBefore={<span aria-hidden="true">⌕</span>}
-        />
-        <select
-          aria-label="Filter by status"
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-        >
-          <option value="all">All statuses</option>
-          {["pending", "changes_requested", "approved", "rejected"].map(
-            (item) => (
-              <option key={item} value={item}>
-                {displayStatus(item)}
-              </option>
-            ),
-          )}
-        </select>
-        <select
-          aria-label="Filter by category"
-          value={category}
-          onChange={(event) => setCategory(event.target.value)}
-        >
-          <option value="all">All categories</option>
-          {Object.entries(categoryNames).map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div
-        className={`admin-split submissions-split ${selected ? "has-selection" : ""}`}
-      >
-        <section
-          className={`admin-panel admin-table-wrap ${selected && compactDetail ? "mobile-hidden" : ""}`}
-        >
-          <div className="admin-panel-header">
-            <div>
-              <h2>Photo proposals</h2>
-              <p>Most recent submissions first</p>
-            </div>
-          </div>
-          {submissions.length ? (
-            <div className="admin-table-scroll">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Photo</th>
-                    <th>Submission</th>
-                    <th>Category</th>
-                    <th>Received</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {submissions.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={selected?.id === item.id ? "selected" : ""}
-                      onClick={() => {
-                        onOpen(item);
-                        setCompactDetail(true);
-                      }}
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          onOpen(item);
-                          setCompactDetail(true);
-                        }
-                      }}
-                    >
-                      <td>
-                        <img
-                          className="admin-row-photo"
-                          src={sitePath(item.photoUrl)}
-                          alt=""
-                        />
-                      </td>
-                      <td>
-                        <b>{item.data.title}</b>
-                        <small>{item.data.photographer}</small>
-                      </td>
-                      <td>{categoryNames[item.data.category]}</td>
-                      <td>{prettyDate(item.createdAt)}</td>
-                      <td>
-                        <StatusBadge status={item.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="admin-empty">
-              <ImageSquare size={26} />
-              <b>No matching submissions</b>
-              <span>Try a different filter, or check again later.</span>
-            </div>
-          )}
-        </section>
-        {selected && (
-          <SubmissionDetail
-            submission={selected}
-            checks={checks}
-            setChecks={setChecks}
-            note={note}
-            setNote={setNote}
-            onReview={onReview}
-            onCreate={onCreate}
-            busy={busy}
-            onBack={() => setCompactDetail(false)}
-          />
-        )}
-        {!selected && (
-          <section className="admin-panel detail-placeholder">
-            <ImageSquare size={28} />
-            <b>Select a submission</b>
-            <p>Review its photo, facts, consent and proposed use here.</p>
-          </section>
-        )}
-      </div>
-    </>
-  );
-}
-
-function SubmissionDetail({
-  submission,
-  checks,
-  setChecks,
-  note,
-  setNote,
-  onReview,
-  onCreate,
-  busy,
-  onBack,
-}: {
-  submission: Submission;
-  checks: ReviewChecks;
-  setChecks: (value: ReviewChecks) => void;
-  note: string;
-  setNote: (value: string) => void;
-  onReview: (value: SubmissionStatus) => void;
-  onCreate: (kind: "identifier" | "potd") => void;
-  busy: boolean;
-  onBack: () => void;
-}) {
-  const data = submission.data;
-  const canReview =
-    submission.status === "pending" ||
-    submission.status === "changes_requested";
-  return (
-    <section className="admin-panel review-panel">
-      <button className="admin-back" onClick={onBack}>
-        <ArrowLeft size={16} /> Back to submissions
-      </button>
-      <div className="review-panel-title">
-        <div>
-          <p className="eyebrow">SUBMISSION DETAIL</p>
-          <h2>{data.title}</h2>
-          <StatusBadge status={submission.status} />
-        </div>
-      </div>
-      <a
-        className="admin-photo-link"
-        href={sitePath(submission.photoUrl)}
-        target="_blank"
-        rel="noreferrer"
-      >
-        <img
-          className="admin-photo"
-          src={sitePath(submission.photoUrl)}
-          alt={`Submitted photo: ${data.title}`}
-        />
-        <span>Open full photo ↗</span>
-      </a>
-      <div className="admin-metadata">
-        <div>
-          <span>Photographer</span>
-          <b>{data.photographer}</b>
-        </div>
-        <div>
-          <span>Category</span>
-          <b>
-            {categoryNames[data.category]}
-            {data.customCategory ? ` · ${data.customCategory}` : ""}
-          </b>
-        </div>
-        <div>
-          <span>Image dimensions</span>
-          <b>
-            {submission.width} × {submission.height} px ·{" "}
-            {(submission.imageBytes / 1048576).toFixed(1)} MB
-          </b>
-        </div>
-        <div>
-          <span>Captured</span>
-          <b>{data.capturedOn || "Not provided"}</b>
-        </div>
-        <div>
-          <span>Aircraft / subject</span>
-          <b>{data.aircraft || "Not provided"}</b>
-        </div>
-        <div>
-          <span>Registration</span>
-          <b>{data.registration || "Not provided"}</b>
-        </div>
-        <div>
-          <span>Airline</span>
-          <b>{data.airline || "Not provided"}</b>
-        </div>
-        <div>
-          <span>Location / airport</span>
-          <b>
-            {[data.location, data.airportCode].filter(Boolean).join(" · ") ||
-              "Not provided"}
-          </b>
-        </div>
-      </div>
-      <div className="admin-detail-copy">
-        <h3>Description</h3>
-        <p>{data.description}</p>
-      </div>
-      <div className="admin-detail-copy">
-        <h3>Evidence & consent</h3>
-        <p>
-          <b>Credit:</b> {data.credit}
-        </p>
-        <p>
-          <b>Rights basis:</b>{" "}
-          {data.rightsBasis === "owner"
-            ? "Photographer owns the image"
-            : "Permission / license provided"}
-        </p>
-        <p>
-          <b>Rights evidence:</b> {data.rightsEvidence || "No details provided"}
-        </p>
-        <p>
-          <b>Factual source:</b>{" "}
-          {data.factualSource ? (
-            <a href={data.factualSource} target="_blank" rel="noreferrer">
-              {data.factualSource} ↗
-            </a>
-          ) : (
-            "No source provided"
-          )}
-        </p>
-        <p>
-          <b>Contact:</b> <a href={`mailto:${data.email}`}>{data.email}</a>
-          {data.portfolio && (
-            <>
-              {" "}
-              ·{" "}
-              <a href={data.portfolio} target="_blank" rel="noreferrer">
-                Portfolio ↗
-              </a>
-            </>
-          )}
-        </p>
-        <p>
-          <b>Image origin:</b> {data.imageOrigin} · Private review consent{" "}
-          {data.consent ? "recorded" : "not recorded"}
-        </p>
-      </div>
-      <div className="admin-detail-copy">
-        <h3>Proposed channels</h3>
-        <div className="channel-chips">
-          {data.channels.map((channel) => (
-            <span key={channel}>{channelNames[channel]}</span>
-          ))}
-        </div>
-        {data.targetGames.length > 0 && (
-          <p>
-            <b>Requested games:</b> {data.targetGames.join(", ")}
-          </p>
-        )}
-      </div>
-      {canReview ? (
-        <div className="review-form">
-          <div className="review-divider">
-            <span>EDITOR REVIEW</span>
-          </div>
-          <fieldset className="review-checks">
-            <legend>Verification checks</legend>
-            {checkNames.map(({ key, label }) => (
-              <Checkbox
-                key={key}
-                checked={checks[key] === true}
-                label={label}
-                onChange={(_, data) =>
-                  setChecks({ ...checks, [key]: data.checked === true })
-                }
-              />
-            ))}
-          </fieldset>
-          <label className="admin-field">
-            <span>
-              Review note{" "}
-              <small>
-                Required for a change request or rejection (10 characters
-                minimum)
-              </small>
-            </span>
-            <Textarea
-              value={note}
-              onChange={(_, data) => setNote(data.value)}
-              rows={3}
-              maxLength={2400}
-              placeholder="Explain what needs attention, or leave a private note for the review record."
-            />
-          </label>
-          <div className="admin-actions review-actions">
-            <Button
-              disabled={busy}
-              onClick={() => onReview("changes_requested")}
-            >
-              Request changes
-            </Button>
-            <Button disabled={busy} onClick={() => onReview("rejected")}>
-              Reject
-            </Button>
-            <Button
-              appearance="primary"
-              disabled={busy}
-              onClick={() => onReview("approved")}
-              icon={<CheckCircle size={17} />}
-            >
-              {busy ? "Saving…" : "Approve submission"}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="review-form">
-          <p className="admin-demo-note">
-            This review is closed. Approval permits editorial use only; it does
-            not publish content.
-          </p>
-          {submission.status === "approved" && (
-            <div className="admin-actions">
-              <Button
-                disabled={!data.channels.includes("games")}
-                onClick={() => onCreate("identifier")}
-              >
-                Use in Aircraft Identifier
-              </Button>
-              <Button
-                disabled={!data.channels.includes("plane-of-the-day")}
-                onClick={() => onCreate("potd")}
-              >
-                Use for Plane of the Day
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
+/** The view-only demo's sample drafts. Staff use the backend desks; nothing here writes. */
 function ContentWorkspace({
   kind,
   records,
@@ -1974,12 +1311,8 @@ function ContentWorkspace({
   setDateKey,
   onOpen,
   onChange,
-  onSave,
-  onCreateSample,
-  busy,
   showArchived,
   setShowArchived,
-  readOnly,
 }: {
   kind: "identifier" | "potd";
   records: EditorialRecord[];
@@ -1989,12 +1322,8 @@ function ContentWorkspace({
   setDateKey: (value: string) => void;
   onOpen: (record: EditorialRecord) => void;
   onChange: (data: EditorialData | null) => void;
-  onSave: (status: EditorialRecord["status"]) => void;
-  onCreateSample: () => void;
-  busy: boolean;
   showArchived: boolean;
   setShowArchived: (value: boolean) => void;
-  readOnly: boolean;
 }) {
   const title =
     kind === "identifier" ? "Aircraft Identifier" : "Plane of the Day";
@@ -2013,16 +1342,6 @@ function ContentWorkspace({
               : "Schedule a featured aircraft photo by your local calendar date."}
           </p>
         </div>
-        {!readOnly && (
-        <Button
-          appearance="primary"
-          onClick={onCreateSample}
-          disabled={busy}
-          icon={<ImageSquare size={17} />}
-        >
-          Load sample content
-        </Button>
-        )}
       </div>
       <div className="admin-toolbar content-toolbar">
         <label className="admin-check-inline">
@@ -2040,20 +1359,7 @@ function ContentWorkspace({
         <section className="admin-panel admin-content-empty">
           <Newspaper size={32} />
           <h2>No {title} content yet</h2>
-          {readOnly ? (
-            <p>There is no sample content for this desk.</p>
-          ) : (
-            <>
-          <p>
-            Approved submissions with the matching channel permission can be
-            added from the submission review. Load a sample to preview the
-            editor; sample content cannot be published.
-          </p>
-          <Button onClick={onCreateSample} disabled={busy}>
-            Load sample content
-          </Button>
-            </>
-          )}
+          <p>There is no sample content for this desk.</p>
         </section>
       ) : (
         <div className="admin-split content-split">
@@ -2062,9 +1368,7 @@ function ContentWorkspace({
               <div>
                 <h2>Content records</h2>
                 <p>
-                  {readOnly
-                    ? "Sample drafts · view only"
-                    : "Saved in the prototype editorial store"}
+                  Sample drafts · view only
                 </p>
               </div>
             </div>
@@ -2104,14 +1408,14 @@ function ContentWorkspace({
                       onChange(null);
                     }}
                   >
-                    <ArrowLeft size={16} /> {readOnly ? "Close" : "Close editor"}
+                    <ArrowLeft size={16} /> Close
                   </button>
                   <p className="eyebrow">
                     {selected.sourceId
                       ? "APPROVED COMMUNITY PHOTO"
                       : "SAMPLE PREVIEW"}
                   </p>
-                  <h2>{readOnly ? "View content" : "Edit content"}</h2>
+                  <h2>View content</h2>
                   <StatusBadge status={selected.status} />
                 </div>
                 <span className="editor-version">
@@ -2121,9 +1425,7 @@ function ContentWorkspace({
               {!selected.sourceId && (
                 <MessageBar intent="warning" layout="multiline">
                   <MessageBarBody>
-                    {readOnly
-                      ? "Sample preview only. The demo account can view this draft but cannot change it."
-                      : "Sample preview only. Add content from an approved, rights-verified submission to publish."}
+                    Sample preview only. The demo account can view this draft but cannot change it.
                   </MessageBarBody>
                 </MessageBar>
               )}
@@ -2134,7 +1436,7 @@ function ContentWorkspace({
                   {selected.sourceId ? "APPROVED SOURCE" : "SAMPLE"}
                 </span>
               </div>
-              <fieldset className="form-grid admin-fieldset" disabled={readOnly}>
+              <fieldset className="form-grid admin-fieldset" disabled>
                 <TextField
                   label="Editorial title"
                   value={data.title}
@@ -2247,47 +1549,6 @@ function ContentWorkspace({
                   </label>
                 )}
               </fieldset>
-              {!readOnly && (
-              <div className="admin-actions editor-actions">
-                <Button disabled={busy} onClick={() => onSave("draft")}>
-                  Save draft
-                </Button>
-                {kind === "identifier" ? (
-                  <Button
-                    appearance="primary"
-                    disabled={busy || !selected.sourceId}
-                    onClick={() => onSave("published")}
-                  >
-                    {busy ? "Saving…" : "Mark prototype-ready"}
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      appearance="primary"
-                      disabled={busy || !selected.sourceId}
-                      onClick={() => onSave("scheduled")}
-                    >
-                      {busy ? "Saving…" : "Schedule feature"}
-                    </Button>
-                    <Button
-                      disabled={busy || !selected.sourceId}
-                      onClick={() => onSave("published")}
-                    >
-                      Publish for today
-                    </Button>
-                  </>
-                )}
-                {selected.status !== "archived" && (
-                  <Button
-                    appearance="subtle"
-                    disabled={busy}
-                    onClick={() => onSave("archived")}
-                  >
-                    Archive
-                  </Button>
-                )}
-              </div>
-              )}
               {kind === "identifier" && (
                 <p className="admin-demo-note">
                   Prototype-ready marks this website record for review. The game
@@ -2306,9 +1567,7 @@ function ContentWorkspace({
               <Newspaper size={28} />
               <b>Select a record</b>
               <p>
-                {readOnly
-                  ? "Choose a sample draft to view it."
-                  : "Load a sample or create a record from an approved submission."}
+                Choose a sample draft to view it.
               </p>
             </section>
           )}

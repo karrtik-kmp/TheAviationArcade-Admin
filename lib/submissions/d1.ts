@@ -1,3 +1,4 @@
+// Kept only as fixtures for the D1 backup export tests; removed together with media-export.
 /**
  * Photographer submissions in D1 and private photo storage. These are community data that stay on
  * the website (D-2), so they are not part of EditorialStore. Writes go through the shared
