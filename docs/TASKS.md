@@ -393,9 +393,18 @@
       `docs/MEDIA_PLAN.md:219`). Never touch `.wrangler/state` or the D1 database itself.
 - [ ] `data/reference-airports.json` and `scripts/fetch-reference-data.py` have no reader in the Admin since
       `admin/references` went (A3.5): delete them, or keep them if the website uses its own copy.
-- [ ] Backend 0.30.0 (proposed, needs the user's OK): photo review feedback (decline / request changes with a reason
-      the photographer sees). The Admin adds the buttons when it lands. With it: `AuditEvent.action` as an open set, a
-      `hasMore`/total on `listMedia`, a list thumbnail.
+- [ ] Backend 0.30.0, photo review feedback. Planned in Backend `4da1830`, `docs/plans/media-review-feedback.md`, and
+      waiting for the user's go-ahead. The Backend proposes that the backend, the website and the Admin go to dev
+      together at 0.30.0. When it lands, the Admin:
+  - Vendors again. Strict readers break again: `MediaItem.review` is required, and `Error.code` gains `media_declined`.
+  - Adds "Request changes" and "Decline" (reason 1..500) and "Withdraw decision", through
+    `POST /v1/admin/media/{id}/review` with `{ revision, decision, reason }` (or `decision: null`).
+    - The review is a sub-record (`MediaItem.review`), not a new state.
+    - "Declined" applies only to unverified photos; "changes requested" also works on a live photo's pending draft.
+    - Withdrawn photos can't be reviewed.
+  - Changes "Photos to review" to `?state=unverified&review=none` plus `?pending=true&review=none`, so the queue and
+    the counts leave out photos that have already had a decision.
+  - Not in 0.30.0: `AuditEvent.action` as an open set (keep parsing leniently), totals, and list thumbnails.
 - [ ] `lib/request/military.ts:51,57`: `.max(2400)` counts UTF-16 units on the raw text; check against the Military
       contract wording.
 - [ ] Walk mock roles (Submissions hidden, no review counts) and the demo Overview (one stat, full row).
