@@ -52,6 +52,8 @@ export const mediaErrorCodes = {
   CREDIT_POLICY_STAFF_ONLY: "CREDIT_POLICY_STAFF_ONLY",
   SUBMISSIONS_CLOSED: "SUBMISSIONS_CLOSED",
   RIGHTS_ALREADY_STATED: "RIGHTS_ALREADY_STATED",
+  // 0.30.0: the photo was declined, so its non-admin owner can't change it. An admin is never refused this.
+  MEDIA_DECLINED: "MEDIA_DECLINED",
 } as const;
 export type MediaErrorCode = (typeof mediaErrorCodes)[keyof typeof mediaErrorCodes];
 
@@ -147,7 +149,28 @@ export const mediaSubmissionSchema = z
   .strict();
 export type MediaSubmission = z.infer<typeof mediaSubmissionSchema>;
 
-/** openapi `MediaItem`. `owner` is present only for admin callers. */
+/** openapi `MediaReview` (0.30.0) values for `decision`, and `GET media?review=` (which adds `none`). */
+export const mediaReviewDecisions = ["changes_requested", "declined"] as const;
+export type MediaReviewDecision = (typeof mediaReviewDecisions)[number];
+export const mediaReviewFilters = ["none", ...mediaReviewDecisions] as const;
+export const REVIEW_REASON_MAX = 500;
+
+/**
+ * openapi `MediaReview` (0.30.0): the current review decision on an item, one per item. The reason is written for the
+ * photographer, who sees it word for word; `decidedBy` is present for admin callers only.
+ */
+export const mediaReviewSchema = z
+  .object({
+    decision: z.enum(mediaReviewDecisions),
+    reason: z.string().refine((text) => codePoints(text) >= 1 && codePoints(text) <= REVIEW_REASON_MAX),
+    version: positive,
+    decidedAt: isoDate,
+    decidedBy: z.string().min(1).max(256).optional(),
+  })
+  .strict();
+export type MediaReview = z.infer<typeof mediaReviewSchema>;
+
+/** openapi `MediaItem`. `owner` (and `review.decidedBy`) are present only for admin callers. */
 export const mediaItemSchema = z
   .object({
     id: mediaId,
@@ -157,6 +180,7 @@ export const mediaItemSchema = z
     publishedVersion: positive.nullable(),
     draft: mediaVersionSchema,
     submission: mediaSubmissionSchema.nullable(),
+    review: mediaReviewSchema.nullable(),
     owner: z.string().min(1).max(256).optional(),
     createdAt: isoDate,
     updatedAt: isoDate,
@@ -234,6 +258,23 @@ export const mediaDescriptionSchema = z
   .refine((raw) => codePoints(raw) <= 2000 && !disallowedInDescription.test(raw.replace(/\r\n/g, "\n")))
   .transform(normaliseDescription)
   .pipe(z.string().refine((text) => codePoints(text) >= 1 && codePoints(text) <= 2000));
+
+// A lone surrogate: with the `u` flag a pair is one code point, so only an unpaired half matches.
+const loneSurrogate = /[\uD800-\uDFFF]/u;
+/**
+ * openapi `MediaReviewRequest` (0.30.0), a union on `decision`. The reason follows the backend's rules: CRLF becomes LF,
+ * a newline is the only control character, no lone surrogates, then trimmed to 1..500 code points.
+ */
+export const mediaReviewReasonSchema = z
+  .string()
+  .refine((raw) => !disallowedInDescription.test(raw.replace(/\r\n/g, "\n")) && !loneSurrogate.test(raw))
+  .transform(normaliseDescription)
+  .pipe(z.string().refine((text) => codePoints(text) >= 1 && codePoints(text) <= REVIEW_REASON_MAX));
+export const mediaReviewRequestSchema = z.union([
+  z.object({ revision: fence, decision: z.enum(mediaReviewDecisions), reason: mediaReviewReasonSchema }).strict(),
+  z.object({ revision: fence, decision: z.null() }).strict(),
+]);
+export type MediaReviewRequest = z.infer<typeof mediaReviewRequestSchema>;
 
 /** The object shape of `MediaEditRequest` (exported for the contract test). */
 export const mediaEditRequestObject = z

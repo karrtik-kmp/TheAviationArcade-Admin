@@ -350,7 +350,7 @@ export function mediaOutcome(status: number, code?: string | null): MediaOutcome
   if (code === "SIGNED_OUT" || code === "ACCOUNT_CHANGED" || status === 401) return "fenced";
   if (code === "PHOTOGRAPHER_REQUIRED" || code === "FORBIDDEN") return "roleLost";
   if (code === "IDEMPOTENCY_KEY_REUSED") return "keyReused";
-  if (code === "VERSION_CONFLICT" || code === "NOTHING_TO_PUBLISH" || code === "RIGHTS_ALREADY_STATED") return "conflict";
+  if (code === "VERSION_CONFLICT" || code === "NOTHING_TO_PUBLISH" || code === "RIGHTS_ALREADY_STATED" || code === "MEDIA_DECLINED") return "conflict";
   if (code === "TOO_LARGE" || code === "UNSUPPORTED_TYPE" || code === "MEDIA_INVALID") return "fileRejected";
   if (code === "BACKEND_CONTRACT") return "error";
   if (

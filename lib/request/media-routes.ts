@@ -17,6 +17,8 @@ import {
   mediaIdempotencyKeyPattern,
   mediaItemSchema,
   mediaListSchema,
+  mediaReviewFilters,
+  mediaReviewRequestSchema,
   mediaRevisionRequestSchema,
   mediaRightsRequestSchema,
   mediaStates,
@@ -75,6 +77,9 @@ function backendFailure(error: unknown, who: Who, ownerOnly?: string): never {
         throw new HttpError(409, "The latest version is already published.", codes.NOTHING_TO_PUBLISH);
       if (code === "rights_already_stated")
         throw new HttpError(409, "The rights for this photo have already been stated.", codes.RIGHTS_ALREADY_STATED);
+      // Never the reason: it is read from the item's `review`.
+      if (code === "media_declined")
+        throw new HttpError(409, "This photo was declined, so it can't be changed. Reload it to see the decision.", codes.MEDIA_DECLINED);
       throw new HttpError(409, "Someone changed this photo first. Reload it and try again.", codes.VERSION_CONFLICT);
     }
     if (status === 413) throw new HttpError(413, "Keep each photo under 5 MB.", codes.TOO_LARGE);
@@ -206,20 +211,27 @@ const controlCharacter = /[\u0000-\u001f\u007f]/;
  * The owner principal is for staff only. The backend already leaves it out for a photographer; this drops it again
  * here, so a backend slip never shows one photographer another's account.
  */
-function ownerFor<T extends { owner?: string }>(item: T, staff: boolean): T {
-  if (staff || item.owner === undefined) return item;
+function ownerFor<T extends { owner?: string; review?: { decidedBy?: string } | null }>(item: T, staff: boolean): T {
+  if (staff) return item;
   const rest = { ...item };
   delete rest.owner;
+  // `review.decidedBy` likewise (0.30.0): a photographer never learns which admin decided.
+  if (rest.review && rest.review.decidedBy !== undefined) {
+    const review = { ...rest.review };
+    delete review.decidedBy;
+    rest.review = review;
+  }
   return rest;
 }
 
 async function list(ctx: Ctx) {
   gate(ctx, "photographer");
-  const params = query(ctx, ["state", "pending", "cursor"]);
+  const params = query(ctx, ["state", "pending", "review", "cursor"]);
   const out = new URLSearchParams();
   const state = params.get("state");
   const pending = params.get("pending");
   const cursor = params.get("cursor");
+  const review = params.get("review");
   if (state !== null) {
     if (!(mediaStates as readonly string[]).includes(state)) throw invalid("Unknown photo state.");
     out.set("state", state);
@@ -228,6 +240,11 @@ async function list(ctx: Ctx) {
     if (pending !== "true") throw invalid("Unknown filter.");
     if (state !== null && state !== "published") throw invalid("Changes waiting only applies to published photos.");
     out.set("pending", "true");
+  }
+  // 0.30.0: combines with `state` and `pending`. A cursor is bound to its filter; the backend refuses a mismatch (400).
+  if (review !== null) {
+    if (!(mediaReviewFilters as readonly string[]).includes(review)) throw invalid("Unknown review filter.");
+    out.set("review", review);
   }
   if (cursor !== null) {
     if (cursor.length < 1 || cursor.length > 100 || controlCharacter.test(cursor)) throw invalid("That page marker is not valid.");
@@ -325,6 +342,23 @@ async function decide(ctx: Ctx, action: "publish" | "withdraw") {
   );
 }
 
+/**
+ * Send a photo back, decline it, or withdraw the decision (0.30.0). Admin only. The backend decides which items can take
+ * which decision (409 otherwise). The reason is passed on as checked and never logged.
+ */
+async function reviewPhoto(ctx: Ctx) {
+  gate(ctx, "staff");
+  const id = mediaId(ctx);
+  query(ctx, []);
+  const parsed = mediaReviewRequestSchema.safeParse(await jsonBody(ctx));
+  if (!parsed.success) throw invalid("Write a reason of 1 to 500 characters, or withdraw the decision.");
+  return respond(
+    await viaBackend(mediaItemSchema, "staff", () =>
+      ctx.backend(ctx.principal.bearer).send("POST", `/v1/admin/media/${id}/review`, parsed.data),
+    ),
+  );
+}
+
 export const mediaRoutes = [
   route({ method: "GET", path: "media", audience: "member", run: list }),
   route({ method: "POST", path: "media", audience: "member", mutation: true, run: (ctx) => upload(ctx) }),
@@ -343,4 +377,5 @@ export const mediaRoutes = [
   route({ method: "PUT", path: "media/:id/rights", audience: "member", mutation: true, run: stateRights }),
   route({ method: "POST", path: "media/:id/publish", audience: "member", mutation: true, run: (ctx) => decide(ctx, "publish") }),
   route({ method: "POST", path: "media/:id/withdraw", audience: "member", mutation: true, run: (ctx) => decide(ctx, "withdraw") }),
+  route({ method: "POST", path: "media/:id/review", audience: "member", mutation: true, run: reviewPhoto }),
 ];

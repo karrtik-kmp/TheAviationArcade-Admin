@@ -59,6 +59,7 @@ const item = {
   publishedVersion: null,
   draft: version,
   submission: null,
+  review: null,
   createdAt: "2026-11-04T10:00:00.000Z",
   updatedAt: "2026-11-04T10:00:00.000Z",
 };
@@ -305,6 +306,7 @@ const mediaCalls = [
   ["POST", "media/med-1/versions?revision=1", upload()],
   ["POST", "media/med-1/publish", { as: "staff", body: { revision: 1 } }],
   ["POST", "media/med-1/withdraw", { as: "staff", body: { revision: 1 } }],
+  ["POST", "media/med-1/review", { as: "staff", body: { revision: 1, decision: null } }],
 ];
 
 test("on a mock deployment every media route is 404 MEDIA_UNAVAILABLE and the backend is never called", async () => {
@@ -823,4 +825,93 @@ test("0.29.0: title and full name are counted in code points, read back and sent
   assert.equal(edit({ title: emoji(201) }), false);
   assert.equal(edit({ fullName: emoji(200) }), true);
   assert.equal(edit({ instagram: { handle: " @sam.spots ", displayConsent: true } }), true, "the backend trims and strips");
+});
+
+const review = { decision: "changes_requested", reason: "Please add the airline.", version: 1, decidedAt: "2026-11-25T10:00:00.000Z" };
+
+test("0.30.0: a review parses with or without decidedBy; anything off the contract is refused", () => {
+  const ok = (r) => media.mediaItemSchema.safeParse({ ...item, review: r }).success;
+  assert.equal(ok(review), true);
+  assert.equal(ok({ ...review, decision: "declined", decidedBy: "firebase:demo-airplane-games:a1" }), true);
+  assert.equal(ok({ ...review, decision: "rejected" }), false);
+  assert.equal(ok({ ...review, reason: "" }), false);
+  assert.equal(ok({ ...review, reason: "\u{1F600}".repeat(500) }), true, "500 code points");
+  assert.equal(ok({ ...review, reason: "\u{1F600}".repeat(501) }), false);
+  assert.equal(ok({ ...review, extra: 1 }), false);
+  const missing = { ...item };
+  delete missing.review;
+  assert.equal(media.mediaItemSchema.safeParse(missing).success, false, "review is required");
+});
+
+test("0.30.0: the review request is normalised like the backend's, and decision null takes no reason", () => {
+  const parse = (body) => media.mediaReviewRequestSchema.safeParse({ revision: 3, ...body });
+  assert.deepEqual(parse({ decision: "declined", reason: "  Not your own photo.\r\nSorry.  " }).data, {
+    revision: 3,
+    decision: "declined",
+    reason: "Not your own photo.\nSorry.",
+  });
+  assert.equal(parse({ decision: null }).success, true);
+  assert.equal(parse({ decision: null, reason: "x" }).success, false);
+  assert.equal(parse({ decision: "changes_requested" }).success, false, "a reason is needed");
+  for (const reason of ["   ", "a\tb", "a\u0000b", "a\uD800b", "x".repeat(501)])
+    assert.equal(parse({ decision: "changes_requested", reason }).success, false, JSON.stringify(reason));
+  assert.equal(parse({ decision: "changes_requested", reason: `${"x".repeat(500)}   ` }).success, true, "trimmed before counting");
+  assert.equal(parse({ decision: "changes_requested", reason: "\u{1F600}" }).success, true, "a pair is not a lone surrogate");
+  assert.equal(parse({ decision: "withdrawn", reason: "x" }).success, false);
+});
+
+test("0.30.0: POST media/:id/review is staff only and forwards the normalised body", async () => {
+  const { call, backend } = mediaHarness({ reply: () => ({ ...item, review }) });
+  const refused = await call("POST", "media/med-7/review", { body: { revision: 2, decision: null } });
+  assert.deepEqual([refused.status, refused.body.code], [403, "FORBIDDEN"]);
+  assert.equal(backend.calls.length, 0);
+  const bad = await call("POST", "media/med-7/review", { as: "staff", body: { revision: 2, decision: "declined", reason: " " } });
+  assert.deepEqual([bad.status, bad.body.code], [400, "INVALID_REQUEST"]);
+  const res = await call("POST", "media/med-7/review", {
+    as: "staff",
+    body: { revision: 2, decision: "changes_requested", reason: " Add the airline. " },
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.body.review, review);
+  assert.deepEqual(
+    backend.calls.map((c) => [c.method, c.path, c.body]),
+    [["POST", "/v1/admin/media/med-7/review", { revision: 2, decision: "changes_requested", reason: "Add the airline." }]],
+  );
+});
+
+test("0.30.0: the review filter is checked and forwarded with the others", async () => {
+  const { call, backend } = mediaHarness({ reply: () => ({ items: [item], nextCursor: null }) });
+  for (const q of ["review=maybe", "review=none&review=declined", "review="])
+    assert.equal((await call("GET", `media?${q}`)).status, 400, q);
+  assert.equal(backend.calls.length, 0);
+  await call("GET", "media?state=unverified&review=none");
+  await call("GET", "media?pending=true&review=none&cursor=c1");
+  await call("GET", "media?review=declined");
+  assert.deepEqual(
+    backend.calls.map((c) => c.path),
+    [
+      "/v1/admin/media?state=unverified&review=none&limit=50",
+      "/v1/admin/media?pending=true&review=none&cursor=c1&limit=50",
+      "/v1/admin/media?review=declined&limit=50",
+    ],
+  );
+});
+
+test("0.30.0: media_declined is 409 MEDIA_DECLINED without the reason; decidedBy reaches staff only", async () => {
+  const declined = mediaHarness({
+    reply: () => {
+      throw new BackendError(409, "media_declined");
+    },
+  });
+  const res = await declined.call("PATCH", "media/med-7", { body: edit });
+  assert.deepEqual([res.status, res.body.code], [409, "MEDIA_DECLINED"]);
+  const decided = { ...item, review: { ...review, decidedBy: "firebase:demo-airplane-games:a1" } };
+  const { call } = mediaHarness({
+    reply: (c) => (c.path.startsWith("/v1/admin/media?") ? { items: [decided], nextCursor: null } : { ...detailAnswer, item: decided }),
+  });
+  assert.equal((await call("GET", "media/med-7", { as: "staff" })).body.item.review.decidedBy, "firebase:demo-airplane-games:a1");
+  const mine = (await call("GET", "media/med-7")).body.item.review;
+  assert.equal("decidedBy" in mine, false);
+  assert.equal(mine.reason, review.reason, "the owner still sees the reason");
+  assert.equal("decidedBy" in (await call("GET", "media")).body.items[0].review, false);
 });
