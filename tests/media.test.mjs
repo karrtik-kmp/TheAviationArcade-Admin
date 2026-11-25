@@ -46,6 +46,7 @@ const version = {
   height: 600,
   licence,
   description: null,
+  title: null,
   rights: { statement: "v1_own", statedAt: "2026-11-04T10:00:00.000Z" },
   publishedAt: null,
   createdAt: "2026-11-04T10:00:00.000Z",
@@ -57,12 +58,21 @@ const item = {
   draftVersion: 1,
   publishedVersion: null,
   draft: version,
+  submission: null,
   createdAt: "2026-11-04T10:00:00.000Z",
   updatedAt: "2026-11-04T10:00:00.000Z",
 };
 const refBase = { mediaId: "med-1", version: 1, sha256: sha, contentType: "image/png", width: 10, height: 10, licence };
 const withUrl = { ...refBase, url: "https://cdn.example.com/x?sig=1", expiresAt: "2026-11-04T11:00:00Z", reason: null };
 const noCdn = { ...refBase, url: null, expiresAt: null, reason: "cdn_not_configured" };
+
+/** The keys of `MediaItem.submission`'s object branch in the contract. */
+function itemSubmissionKeys() {
+  const itemBlock = block("MediaItem");
+  const found = itemBlock.match(/required: \[(fullName, instagramHandle, instagramDisplayConsent)\]/);
+  assert.ok(found, "MediaItem.submission lists its required keys");
+  return found[1].split(",").map((each) => each.trim()).sort();
+}
 
 test("media schemas list the contract's required keys", () => {
   assert.deepEqual(list(block("MediaState"), "enum"), [...media.mediaStates].sort());
@@ -77,10 +87,22 @@ test("media schemas list the contract's required keys", () => {
   const editBlock = block("MediaEditRequest");
   assert.deepEqual(list(editBlock, "required"), ["revision"]);
   assert.ok(editBlock.includes("- required: [licence]") && editBlock.includes("- required: [description]"));
-  const editKeys = ["description", "licence", "note", "revision"];
+  const editKeys = ["description", "fullName", "instagram", "licence", "note", "revision", "title"];
   assert.deepEqual(Object.keys(media.mediaEditRequestObject.shape).sort(), editKeys);
   assert.deepEqual(propertyNames(editBlock).sort(), editKeys);
-  assert.deepEqual(list(block("MediaRightsRequest"), "required"), keys(media.mediaRightsRequestSchema));
+  // 0.29.0: MediaRightsRequest is a union by statement. The Admin sends only the v1 branch (v2 moves are the
+  // photographer's own, from the website), so its schema is that branch exactly.
+  const rightsBlock = block("MediaRightsRequest");
+  assert.match(rightsBlock, /required: \[revision, statement\]\r?\n/);
+  assert.ok(rightsBlock.includes("statement: { type: string, enum: [v1_own, v1_authorised] }"));
+  assert.ok(rightsBlock.includes("required: [revision, statement, submission]"), "the v2 branch exists and is not sent here");
+  assert.deepEqual(keys(media.mediaRightsRequestSchema), ["revision", "statement"]);
+  // The upload header now names the v2 code too; the Admin's own upload stays v1.
+  assert.ok(yaml.includes("enum: [v1_own, v1_authorised, v2_agreement_2026-12-01] }"));
+  assert.equal(media.mediaV2Statement, "v2_agreement_2026-12-01");
+  // MediaItem.submission: the contract's three keys, all required, and the item key itself required (null or object).
+  const submissionKeys = itemSubmissionKeys();
+  assert.deepEqual(submissionKeys, keys(media.mediaSubmissionSchema));
   assert.deepEqual(list(block("MediaRights"), "required"), ["statedAt", "statement"]);
   assert.deepEqual(Object.keys(media.mediaRightsSchema.shape).sort(), ["statedAt", "statedBy", "statement"]);
   assert.deepEqual(list(block("MediaRights"), "enum", 10), [...media.mediaRightsStatements].sort());
@@ -746,4 +768,59 @@ test("a backend description is counted in code points: 2000 emoji parse, 2001 do
   }
   assert.equal(media.mediaItemSchema.safeParse(withDescription("a".repeat(2000))).success, true);
   assert.equal(media.mediaItemSchema.safeParse(withDescription(null)).success, true);
+});
+
+test("0.29.0: a v2 item with its private submission parses; an erased one too; anything else is off the contract", () => {
+  const v2 = {
+    ...item,
+    draft: { ...version, title: "Concorde at Heathrow", rights: { statement: "v2_agreement_2026-12-01", statedAt: "2026-12-01T10:00:00.000Z" } },
+    submission: { fullName: "Sam Spotter", instagramHandle: "sam.spots", instagramDisplayConsent: true },
+  };
+  assert.equal(media.mediaItemSchema.safeParse(v2).success, true);
+  const erased = { ...v2, submission: { fullName: null, instagramHandle: null, instagramDisplayConsent: false } };
+  assert.equal(media.mediaItemSchema.safeParse(erased).success, true);
+  for (const off of [
+    { ...v2, submission: { fullName: "Sam" } },
+    { ...v2, submission: { ...v2.submission, instagramHandle: "@sam" } },
+    { ...v2, submission: { ...v2.submission, email: "x@y.z" } },
+    { ...item, submission: undefined },
+    { ...v2, draft: { ...v2.draft, title: "" } },
+    { ...v2, draft: { ...v2.draft, title: undefined } },
+    { ...v2, draft: { ...v2.draft, rights: { statement: "v3_future", statedAt: "2026-12-01T10:00:00.000Z" } } },
+  ])
+    assert.equal(media.mediaItemSchema.safeParse(off).success, false, JSON.stringify(off).slice(0, 120));
+});
+
+test("0.29.0: an admin's removal of private data is forwarded as sent; a body with no change is still 400", async () => {
+  const { call, backend } = mediaHarness({ reply: () => item });
+  const patch = (body) => call("PATCH", "media/med-7", { as: "staff", body });
+  assert.equal((await patch({ revision: 2, fullName: null })).status, 200);
+  assert.equal((await patch({ revision: 3, instagram: { handle: null, displayConsent: false } })).status, 200);
+  assert.equal((await patch({ revision: 4, instagram: { handle: "sam.spots", displayConsent: false } })).status, 200);
+  assert.deepEqual(
+    backend.calls.map((c) => c.body),
+    [
+      { revision: 2, fullName: null },
+      { revision: 3, instagram: { handle: null, displayConsent: false } },
+      { revision: 4, instagram: { handle: "sam.spots", displayConsent: false } },
+    ],
+  );
+  for (const body of [{ revision: 5 }, { revision: 5, note: "x" }, { revision: 5, instagram: { handle: null } }, { revision: 5, instagram: { displayConsent: false } }])
+    assert.equal((await patch(body)).status, 400, JSON.stringify(body));
+  assert.equal(backend.calls.length, 3);
+});
+
+test("0.29.0: title and full name are counted in code points, read back and sent", () => {
+  const emoji = (n) => "\u{1F600}".repeat(n);
+  const withTitle = (title) => ({ ...item, draft: { ...version, title } });
+  const withName = (fullName) => ({ ...item, submission: { fullName, instagramHandle: null, instagramDisplayConsent: false } });
+  assert.equal(media.mediaItemSchema.safeParse(withTitle(emoji(200))).success, true, "200 emoji are 400 UTF-16 units");
+  assert.equal(media.mediaItemSchema.safeParse(withTitle(emoji(201))).success, false);
+  assert.equal(media.mediaItemSchema.safeParse(withName(emoji(200))).success, true);
+  assert.equal(media.mediaItemSchema.safeParse(withName(emoji(201))).success, false);
+  const edit = (body) => media.mediaEditRequestSchema.safeParse({ revision: 1, ...body }).success;
+  assert.equal(edit({ title: emoji(200) }), true);
+  assert.equal(edit({ title: emoji(201) }), false);
+  assert.equal(edit({ fullName: emoji(200) }), true);
+  assert.equal(edit({ instagram: { handle: " @sam.spots ", displayConsent: true } }), true, "the backend trims and strips");
 });

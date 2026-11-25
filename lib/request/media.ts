@@ -11,9 +11,14 @@ import { normaliseDescription } from "../media-form.ts";
 export const mediaIdPattern = /^med-[1-9][0-9]{0,14}$/;
 export const mediaStates = ["unverified", "published", "withdrawn"] as const;
 export const mediaContentTypes = ["image/jpeg", "image/png"] as const;
-/** Rights statements: the two the API accepts (wording v1), and the import's marker, which is read-only. */
+/**
+ * Rights statements. The Admin sends only the two v1 ones (its upload and `PUT .../rights` stay v1; photographers
+ * accept the v2 agreement on the website). It reads v2 (the client's agreement of 2026-12-01, API 0.29.0) and the
+ * import's marker, which is read-only.
+ */
 export const mediaUploadStatements = ["v1_own", "v1_authorised"] as const;
-export const mediaRightsStatements = ["v1_own", "v1_authorised", "d1_private_review"] as const;
+export const mediaV2Statement = "v2_agreement_2026-12-01";
+export const mediaRightsStatements = ["v1_own", "v1_authorised", mediaV2Statement, "d1_private_review"] as const;
 export type MediaUploadStatement = (typeof mediaUploadStatements)[number];
 /** openapi parameter `MediaRightsStatementHeader` (`X-Rights-Statement`). */
 export const mediaRightsStatementPattern = /^v1_(own|authorised)$/;
@@ -114,12 +119,33 @@ export const mediaVersionSchema = z
       .string()
       .refine((text) => codePoints(text) >= 1 && codePoints(text) <= 2000)
       .nullable(),
+    // 0.29.0: staff-only photo title, on the version like the description.
+    title: z
+      .string()
+      .refine((text) => codePoints(text) >= 1 && codePoints(text) <= 200)
+      .nullable(),
     rights: mediaRightsSchema.nullable(),
     publishedAt: isoDate.nullable(),
     createdAt: isoDate,
   })
   .strict();
 export type MediaVersion = z.infer<typeof mediaVersionSchema>;
+
+/**
+ * openapi `MediaItem.submission` (0.29.0): the photographer's private data, one record per item (not per version), for
+ * the owner and admins only. Fields become null once erased. A non-owner admin may only remove them.
+ */
+export const mediaSubmissionSchema = z
+  .object({
+    fullName: z
+      .string()
+      .refine((text) => codePoints(text) >= 1 && codePoints(text) <= 200)
+      .nullable(),
+    instagramHandle: z.string().regex(/^[A-Za-z0-9._]{1,30}$/).nullable(),
+    instagramDisplayConsent: z.boolean(),
+  })
+  .strict();
+export type MediaSubmission = z.infer<typeof mediaSubmissionSchema>;
 
 /** openapi `MediaItem`. `owner` is present only for admin callers. */
 export const mediaItemSchema = z
@@ -130,6 +156,7 @@ export const mediaItemSchema = z
     draftVersion: positive,
     publishedVersion: positive.nullable(),
     draft: mediaVersionSchema,
+    submission: mediaSubmissionSchema.nullable(),
     owner: z.string().min(1).max(256).optional(),
     createdAt: isoDate,
     updatedAt: isoDate,
@@ -214,12 +241,24 @@ export const mediaEditRequestObject = z
     revision: fence,
     licence: mediaLicenceUpdateSchema.optional(),
     description: mediaDescriptionSchema.nullable().optional(),
+    // 0.29.0. The backend trims and checks these and decides who may change what (a non-owner admin may only remove).
+    // Lengths in code points, as the contract counts them, on the text as sent (the backend trims, then checks again).
+    title: z.string().refine((text) => codePoints(text) <= 200).nullable().optional(),
+    fullName: z.string().refine((text) => codePoints(text) <= 200).nullable().optional(),
+    // The contract gives the handle no length: it is trimmed and a leading "@" dropped before its pattern. 200 is this
+    // website's defensive bound, as for the other strings.
+    instagram: z.object({ handle: z.string().max(200).nullable(), displayConsent: z.boolean() }).strict().optional(),
     note: z.string().min(1).max(500).optional(),
   })
   .strict();
-/** openapi `MediaEditRequest`: at least one of `licence` and `description`. */
+/** openapi `MediaEditRequest`: at least one of `licence`, `description`, `title`, `fullName` and `instagram`. */
 export const mediaEditRequestSchema = mediaEditRequestObject.refine(
-  (body) => body.licence !== undefined || body.description !== undefined,
-  { message: "licence or description is required" },
+  (body) =>
+    body.licence !== undefined ||
+    body.description !== undefined ||
+    body.title !== undefined ||
+    body.fullName !== undefined ||
+    body.instagram !== undefined,
+  { message: "a change is required" },
 );
 export type MediaEditRequest = z.infer<typeof mediaEditRequestSchema>;

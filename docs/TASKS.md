@@ -346,6 +346,41 @@
       router-copy note in the README, and the comment wrap.
     - The QA scripts were parse-checked only, not run.
 
+- 2026-11-25: A3 fix wave, commit 5. Vendored Backend API 0.29.0 (photo submission v2, Backend `ef16242`; notice
+  `../docs/briefs/website-photo-submission-v2-contract.md`).
+  - **Contract.** `contracts/openapi.yaml` is a byte copy of Backend `ef16242` `docs/openapi.yaml` (same sha256).
+  - **Parsers widened.**
+    - The statement enum gains `v2_agreement_2026-12-01`.
+    - `MediaVersion.title` (1..200 code points, or null).
+    - `MediaItem.submission` (`fullName`, `instagramHandle`, `instagramDisplayConsent`, or null).
+    - `MediaEditRequest` gains `title`, `fullName` and `instagram`.
+    - The Admin's own upload and `PUT .../rights` stay v1-only, since photographers accept v2 on the website.
+  - **Media and Submissions desks.**
+    - A v2 draft is publishable. Its rights line names the agreement, and its title shows.
+    - The licence name and link are read-only on v2, and the credit-required toggle is disabled.
+    - A v2 credit can't be cleared.
+    - The review check reads "The credit and title match the submission."
+    - A v2 draft whose name was removed is blocked from publishing, with the reason.
+  - **Photographer's details panel.** Private, for staff only. It offers only removals, because a non-owner admin may
+    not set these values (the backend answers 403):
+    - "Remove full name";
+    - "Remove Instagram handle";
+    - "Stop showing the handle".
+    Each one is confirmed and fenced by the revision.
+  - **Verification.**
+    - typecheck clean; `npm test` 393/393; `npm run build:node` complete; eslint has no new errors.
+    - Browser walk against the LOCAL FAKE backend, updated to the 0.29.0 shapes:
+      - the v2 item's facts, locks and check wording show;
+      - "Remove full name" sent exactly `{"revision":1,"fullName":null}`;
+      - the desk then showed "Removed" and the name-removed blocker.
+    - Code review: SHIP AFTER FIXES. All five minors are fixed:
+      - a v1→v2 move under the editor no longer leaves typed values in the locked fields;
+      - an empty v2 credit is refused at the field;
+      - the publish re-check gives the real reason;
+      - the request lengths count code points;
+      - there are tests for 200 and 201 emoji.
+    - Not run against the real Backend 0.29.0, which is not on `dev.api`.
+
 ## Next
 
 - [x] A3: move the desks off D1 onto the backend, per `docs/A3_PLAN.md`. A3.0 to A3.5 are done on `feat/a3-desks`
@@ -364,6 +399,8 @@
 - [ ] `lib/request/military.ts:51,57`: `.max(2400)` counts UTF-16 units on the raw text; check against the Military
       contract wording.
 - [ ] Walk mock roles (Submissions hidden, no review counts) and the demo Overview (one stat, full row).
+- [ ] Backend 0.29.0 to `dev.api`: the user's call, after the website has also vendored 0.29.0 (the Admin has, at
+      commit 5 of the fix wave). The Backend session was told on 2026-11-25. Then walk a v2 photo on `dev.admin.`.
 - [ ] Walk the Plane of the Day desk against the real Backend's demo seed (`pod-4` … `pod-8`): publish the photos in
       Media, re-run the seed, then schedule one; and with `DEV_DEMO_WAIVER=dev-demo` on `dev.admin.`.
 - [ ] Walk the Activity desk with `ROLES_SOURCE=backend` against a local or the dev backend: waiver flags on a waived

@@ -2,7 +2,7 @@
 // rules the browser keeps; the routes are the media routes, tested in media.test.mjs.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { publishBlockers, reviewChecks, reviewKey, reviewReady, rightsOwnerOnly, ticksFor } from "../lib/media-form.ts";
+import { agreementVersion, hasPublishableStatement, nameRemovedBlocker, publishBlockers, reviewChecks, reviewKey, reviewReady, rightsOwnerOnly, ticksFor } from "../lib/media-form.ts";
 import { sourcesFor } from "../lib/workspace-load.ts";
 
 const licence = { credit: "A. Pilot", licenceName: "CC BY 4.0", licenceUrl: null, sourceUrl: null, attributionText: null, creditRequired: true };
@@ -44,4 +44,15 @@ test("publishing needs every check ticked for THIS revision; a new revision star
   assert.deepEqual(ticksFor({ key, ids: all }, moved), []);
   // Nor do ticks made on another photo at the same revision.
   assert.equal(reviewReady({ key, ids: all }, reviewKey({ id: "med-2", revision: 4 })), false);
+});
+
+test("0.29.0: the v2 agreement can be published; a v2 photo whose name was removed cannot", () => {
+  const v2 = { statement: "v2_agreement_2026-12-01", statedAt: "2026-12-01T10:00:00.000Z" };
+  assert.equal(hasPublishableStatement(v2), true);
+  assert.equal(agreementVersion(v2), "2026-12-01");
+  assert.equal(agreementVersion(stated), null);
+  assert.deepEqual(publishBlockers(licence, v2, { fullName: "Sam Spotter" }), []);
+  assert.deepEqual(publishBlockers(licence, v2, { fullName: null }), [{ field: "fullName", message: nameRemovedBlocker }]);
+  // A v1 photo has no private name to need.
+  assert.deepEqual(publishBlockers(licence, stated, { fullName: null }), []);
 });

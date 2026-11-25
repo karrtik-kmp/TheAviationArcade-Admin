@@ -19,6 +19,8 @@ import {
   mediaOutcome,
   publishBlockers,
   rebaseLicence,
+  agreementVersion,
+  isV2,
   reviewChecks,
   reviewKey,
   reviewReady,
@@ -139,10 +141,16 @@ function baseOf(version: MediaVersion): MediaLicence & { description: string | n
 function rightsLine(rights: RightsState, mounted: boolean) {
   if (!rights) return "None";
   if (rights.statement === "d1_private_review") return "Imported: private review only";
+  const agreement = agreementVersion(rights);
   const date = mounted ? new Date(rights.statedAt) : null;
   const on = date && !Number.isNaN(date.valueOf()) ? ` · stated ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date)}` : "";
   const by = rights.statedBy ? ` by ${accountOf(rights.statedBy)}` : "";
-  return `${rights.statement === "v1_own" ? "Own work" : "Authorised by the rights holder"}${on}${by}`;
+  const kind = agreement
+    ? `Photo Submission Agreement of ${agreement}`
+    : rights.statement === "v1_own"
+      ? "Own work"
+      : "Authorised by the rights holder";
+  return `${kind}${on}${by}`;
 }
 function useMounted() {
   const [mounted, setMounted] = useState(false);
@@ -220,6 +228,8 @@ function DeskDetail({
   // Review mode: what the reviewer ticked, for one revision of this photo only.
   const [checked, setChecked] = useState<ReviewTicks>({ key: "", ids: [] });
   const [justPublished, setJustPublished] = useState<MediaItem | null>(null);
+  // A removal of the photographer's private data waiting for its confirmation (privacy request, agreement section 8).
+  const [clearAsk, setClearAsk] = useState<"name" | "handle" | "display" | null>(null);
   // Only the newest load or write may change the screen.
   const generation = useRef(0);
   // Writes have their own generation, so a reload never swallows a save or publish answer.
@@ -261,7 +271,19 @@ function DeskDetail({
         setErrors({});
       } else {
         // Untouched fields follow the new saved licence; typed text stays, so another editor's change isn't reverted.
-        setValues((typed) => rebaseLicence(oldBase, newBase, typed));
+        const agreement = isV2(rightsOf(next.item.draft));
+        setValues((typed) => {
+          const rebased = rebaseLicence(oldBase, newBase, typed);
+          // On a v2 draft these are the agreement's and locked: a value typed before the move can't stay in them.
+          return agreement
+            ? {
+                ...rebased,
+                licenceName: newBase.licenceName ?? "",
+                licenceUrl: newBase.licenceUrl ?? "",
+                creditRequired: newBase.creditRequired,
+              }
+            : rebased;
+        });
         setErrors({});
       }
     },
@@ -303,6 +325,7 @@ function DeskDetail({
     event.preventDefault();
     if (!item || !base || busy) return;
     const found: Partial<Record<LicenceField | "description", string>> = licenceErrors(values);
+    if (isV2(rightsOf(item.draft)) && !values.credit.trim()) found.credit = "A photo under the agreement needs a credit.";
     const descriptionProblem = descriptionErrors(values.description ?? "");
     if (descriptionProblem) found.description = descriptionProblem;
     setErrors(found);
@@ -343,11 +366,49 @@ function DeskDetail({
     }
   }
 
+  /**
+   * Removes the photographer's private data on a privacy request. A non-owner admin may only remove (the backend
+   * answers 403 to anything else), so the Admin never sends a new value. Fenced by the revision like every write.
+   */
+  async function removeDetail(what: "name" | "handle" | "display") {
+    if (!item || busy) return;
+    const change =
+      what === "name"
+        ? { fullName: null }
+        : what === "handle"
+          ? { instagram: { handle: null, displayConsent: false } }
+          : { instagram: { handle: item.submission?.instagramHandle ?? null, displayConsent: false } };
+    const mine = ++writeGeneration.current;
+    setBusy(true);
+    setNotice(null);
+    const reply = await callMedia(sessionKey, `/api/media/${item.id}`, { revision: item.revision, ...change }, "PATCH");
+    setBusy(false);
+    if (mine !== writeGeneration.current) return;
+    const blocked = blockStatus(reply);
+    if (blocked !== null) return onBlocked(blocked);
+    setClearAsk(null);
+    focusAfter.current = "notice";
+    const outcome = mediaOutcome(reply.status, reply.code);
+    if (outcome === "ok") {
+      setNotice({ kind: "success", text: what === "display" ? "The handle is no longer shown." : "Removed." });
+      onWritten?.();
+      await reload(false);
+    } else if (outcome === "conflict") {
+      setNotice({ kind: "error", text: "Someone changed this photo first. The latest details are loaded; check them and try again." });
+      await reload(false);
+    } else {
+      setNotice({ kind: "error", text: failureText(reply, "That couldn't be removed.") });
+    }
+  }
+
   async function act(action: "publish" | "withdraw") {
     if (!item || busy) return;
     // Re-check at the moment of confirming: the saved licence must still allow it and nothing may be unsaved.
     if (action === "publish") {
-      const stopped = publishBlockers(item.draft.licence, rightsOf(item.draft), { devDemoWaiver });
+      const stopped = publishBlockers(item.draft.licence, rightsOf(item.draft), {
+        devDemoWaiver,
+        fullName: item.submission?.fullName ?? null,
+      });
       const unsaved = "changes" in licenceDiff(baseOf(item.draft), values, true);
       if (unsaved || stopped.length > 0 || !checklistDone) {
         setConfirm(null);
@@ -356,8 +417,8 @@ function DeskDetail({
           kind: "error",
           text: !checklistDone
             ? "Finish the review checks before publishing."
-            : !unsaved && stopped.every((b) => b.field === "rights")
-              ? rightsOwnerOnly
+            : !unsaved && stopped.length > 0 && stopped.every((b) => b.field === "rights" || b.field === "fullName")
+              ? stopped.map((b) => b.message).join(" ")
               : "Publishing was stopped: the saved licence changed or has unsaved edits. Check it and try again.",
         });
         return;
@@ -436,7 +497,10 @@ function DeskDetail({
 
   const preview = detail.preview;
   const rights = rightsOf(item.draft);
-  const blockers = publishBlockers(base, rights, { devDemoWaiver });
+  const blockers = publishBlockers(base, rights, { devDemoWaiver, fullName: item.submission?.fullName ?? null });
+  // A v2 version's licence is the agreement: its name, link and credit requirement can't be changed (the backend refuses).
+  const agreementLicence = isV2(rights);
+  const submission = item.submission;
   const dirty = "changes" in licenceDiff(base, values, true);
   const canPublish = item.draftVersion !== item.publishedVersion;
   const publishBlocked = dirty || blockers.length > 0 || !checklistDone;
@@ -495,6 +559,10 @@ function DeskDetail({
             <dd>{rightsLine(rights, mounted)}</dd>
           </div>
           <div>
+            <dt>Title</dt>
+            <dd>{item.draft.title ?? "None"}</dd>
+          </div>
+          <div>
             <dt>Uploaded by</dt>
             <dd>{accountOf(item.owner)}</dd>
           </div>
@@ -522,6 +590,7 @@ function DeskDetail({
                 <Input
                   id={`${uid}-${field}`}
                   value={values[field]}
+                  readOnly={agreementLicence && (field === "licenceName" || field === "licenceUrl")}
                   maxLength={field === "attributionText" ? 1000 : field.endsWith("Url") ? 2048 : 200}
                   aria-invalid={!!errors[field]}
                   aria-describedby={errors[field] ? `${uid}-${field}-error` : undefined}
@@ -558,7 +627,12 @@ function DeskDetail({
             <div className="admin-field full">
               <Checkbox
                 checked={!!values.creditRequired}
-                label="A credit is required to publish this photo"
+                disabled={agreementLicence}
+                label={
+                  agreementLicence
+                    ? "A credit is required to publish this photo (set by the agreement)"
+                    : "A credit is required to publish this photo"
+                }
                 onChange={(_, data) => setValues((old) => ({ ...old, creditRequired: !!data.checked }))}
               />
             </div>
@@ -589,6 +663,72 @@ function DeskDetail({
           {dirty && <span className="media-desk-dirty">Unsaved edits</span>}
         </div>
       </form>
+
+      {submission && (
+        <section className="media-desk-submission" aria-labelledby={`${uid}-submission`}>
+          <h3 id={`${uid}-submission`}>Photographer&apos;s details</h3>
+          <p className="media-desk-note">
+            Private: only the photographer and admins see these. Only the photographer can set or change them; an admin
+            can only remove them, on a privacy request.
+          </p>
+          <dl className="media-desk-facts">
+            <div>
+              <dt>Full name</dt>
+              <dd>{submission.fullName ?? "Removed"}</dd>
+            </div>
+            <div>
+              <dt>Instagram</dt>
+              <dd>{submission.instagramHandle ? `@${submission.instagramHandle}` : "None"}</dd>
+            </div>
+            <div>
+              <dt>Show the handle publicly</dt>
+              <dd>{submission.instagramDisplayConsent ? "Yes" : "No"}</dd>
+            </div>
+          </dl>
+          {clearAsk ? (
+            <div className="media-desk-confirm" role="group" aria-label="Confirm removal">
+              <p>
+                <b>
+                  {clearAsk === "name"
+                    ? "Remove the photographer's full name?"
+                    : clearAsk === "handle"
+                      ? "Remove the Instagram handle?"
+                      : "Stop showing the Instagram handle?"}
+                </b>{" "}
+                {clearAsk === "name"
+                  ? "Only the photographer can add it again, and a new agreement version can't be published without it."
+                  : "Only the photographer can turn this back on."}
+              </p>
+              <div className="admin-actions">
+                <Button appearance="primary" disabled={busy} onClick={() => void removeDetail(clearAsk)}>
+                  {busy ? "Working…" : "Confirm removal"}
+                </Button>
+                <Button disabled={busy} onClick={() => setClearAsk(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="admin-actions">
+              {submission.fullName && (
+                <Button disabled={busy || confirm !== null} onClick={() => setClearAsk("name")}>
+                  Remove full name
+                </Button>
+              )}
+              {submission.instagramHandle && (
+                <Button disabled={busy || confirm !== null} onClick={() => setClearAsk("handle")}>
+                  Remove Instagram handle
+                </Button>
+              )}
+              {submission.instagramDisplayConsent && (
+                <Button disabled={busy || confirm !== null} onClick={() => setClearAsk("display")}>
+                  Stop showing the handle
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="media-desk-versions">
         <h3>Versions</h3>
@@ -648,7 +788,7 @@ function DeskDetail({
                   <Checkbox
                     key={check.id}
                     checked={ticked.includes(check.id)}
-                    label={check.label}
+                    label={check.id === "credit" && agreementLicence ? "The credit and title match the submission." : check.label}
                     onChange={(_, data) =>
                       setChecked({
                         key: checkKey,
@@ -665,7 +805,7 @@ function DeskDetail({
                 {blockers.map((blocker) => (
                   <li key={blocker.field}>
                     {blocker.message}{" "}
-                    {blocker.field !== "rights" && (
+                    {blocker.field !== "rights" && blocker.field !== "fullName" && (
                       <a
                         href={`#${uid}-${blocker.field}`}
                         onClick={(event) => {

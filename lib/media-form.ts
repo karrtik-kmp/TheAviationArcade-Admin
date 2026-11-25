@@ -28,7 +28,7 @@ export const RIGHTS_STATEMENT = {
 
 /** A version's stored rights statement (staff see `statedBy`). `d1_private_review` marks an imported photo. */
 export type RightsState = {
-  statement: "v1_own" | "v1_authorised" | "d1_private_review";
+  statement: "v1_own" | "v1_authorised" | "v2_agreement_2026-12-01" | "d1_private_review";
   statedAt: string;
   statedBy?: string;
 } | null;
@@ -49,7 +49,19 @@ export function needsRightsStatement(item: {
   publishedVersion: number | null;
   draft: { publishedAt: string | null };
 }) {
-  return !hasV1Statement(rightsOf(item.draft)) && item.draft.publishedAt == null && item.draftVersion !== item.publishedVersion;
+  return !hasPublishableStatement(rightsOf(item.draft)) && item.draft.publishedAt == null && item.draftVersion !== item.publishedVersion;
+}
+/** The photographer accepted the v2 agreement (2026-12-01) for this version: its licence is the agreement. */
+export function isV2(rights: RightsState | undefined) {
+  return rights?.statement === "v2_agreement_2026-12-01";
+}
+/** A statement a version can be published under: v1 (own, authorised) or the v2 agreement. */
+export function hasPublishableStatement(rights: RightsState | undefined) {
+  return hasV1Statement(rights) || isV2(rights);
+}
+/** The agreement version a v2 statement names, for display ("2026-12-01"); null for anything else. */
+export function agreementVersion(rights: RightsState | undefined): string | null {
+  return isV2(rights) ? "2026-12-01" : null;
 }
 /** True when the statement is a v1 one the owner gave through the API (publishing needs it). */
 export function hasV1Statement(rights: RightsState | undefined) {
@@ -302,7 +314,10 @@ export function reviewReady(ticks: ReviewTicks, key: string): boolean {
   return reviewChecks.every((check) => current.includes(check.id));
 }
 
-export type PublishBlocker = { field: "licenceName" | "credit" | "rights"; message: string };
+/** A v2 photo needs the photographer's name to be published; an admin who removed it can't put it back. */
+export const nameRemovedBlocker = "The photographer's name was removed; they must add it before this can be published.";
+
+export type PublishBlocker = { field: "licenceName" | "credit" | "rights" | "fullName"; message: string };
 /**
  * What stops a SAVED draft from being published (the backend's 422 `content_invalid` rule): a licence
  * name, a credit when required, and a v1 rights statement. Pass the draft's `rights` (null when none);
@@ -311,14 +326,16 @@ export type PublishBlocker = { field: "licenceName" | "credit" | "rights"; messa
 export function publishBlockers(
   saved: MediaLicence,
   rights?: RightsState,
-  options: { devDemoWaiver?: boolean } = {},
+  options: { devDemoWaiver?: boolean; fullName?: string | null } = {},
 ): PublishBlocker[] {
   const blockers: PublishBlocker[] = [];
   // The dev demo waiver (lib/dev-waiver.ts) drops only the licence-name check; the backend still decides.
   if (!options.devDemoWaiver && !saved.licenceName?.trim()) blockers.push({ field: "licenceName", message: "Add a licence name." });
   if (saved.creditRequired && !saved.credit?.trim()) blockers.push({ field: "credit", message: "Add a credit, which this photo requires." });
-  if (rights !== undefined && !hasV1Statement(rights))
+  if (rights !== undefined && !hasPublishableStatement(rights))
     blockers.push({ field: "rights", message: rightsOwnerOnly });
+  // 0.29.0: a v2 draft whose item has no full name (erased) is refused.
+  if (isV2(rights) && "fullName" in options && !options.fullName) blockers.push({ field: "fullName", message: nameRemovedBlocker });
   return blockers;
 }
 

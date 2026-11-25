@@ -2091,6 +2091,12 @@
   min-height: 44px;
   align-items: center;
 }
+.media-desk-submission {
+  margin: 0 0 20px;
+}
+.media-desk-submission h3 {
+  margin: 0 0 4px;
+}
 .media-desk-after {
   margin: 0 0 12px;
 }
