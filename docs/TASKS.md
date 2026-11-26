@@ -567,5 +567,23 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
 
 ### §4.9 Content the website needs (owner open, OI-19)
 
-- [ ] Partner directory (WB-PTR), FAQ (WB-FAQ), the contact-form inbox (WB-CON), and the homepage's featured partners and
-      ad placements (WB-HOM-07/08). These wait on OI-19 to decide whether the Admin owns them.
+- [ ] Partner directory (WB-PTR), the contact-form inbox (WB-CON), and the homepage's featured partners and ad placements
+      (WB-HOM-07/08). These wait on OI-19 to decide whether the Admin owns them.
+- [ ] **FAQ desk (WB-FAQ; client request 2026-11-26).** Plan: `../website/docs/briefs/faq-cms-plan.md`, section "Admin".
+      **Blocked on Backend contract 0.33.0**, which the Backend builds after the joint dev deploy and announces by commit.
+      Don't start until the user says go.
+  - The desk is staff only (admin role), and the demo admin sees an empty explanatory desk with the controls disabled
+    and no sample questions.
+  - It edits a draft of categories and entries: add, rename and remove, one PATCH operation per change.
+  - Move up and Move down work by keyboard. Focus stays on the moved item, and a polite live region announces
+    "Moved to position n of m" (the `StoreDesk.tsx` pattern).
+  - Answers are plain text, with a live preview from the website's renderer module, copied byte-identical with its
+    fixture tests.
+  - Save sends the base version. There is Discard, Publish with a confirm dialog listing the changes, and a view of what
+    is live. The dialogs trap focus, return it to the trigger and close on Escape.
+  - A 409 keeps the typed text, shows a `role="alert"` notice, reloads in place and never resends. A version conflict is
+    told apart from ACCOUNT_CHANGED, 401 and 403 (those go to `blockAccess`). Use `drafts.open("faq", version)` and
+    `drafts.isCurrent(generation)`.
+  - Checks: typecheck, test and build, then in the browser a keyboard reorder, the 409 path and a 375 px width.
+  - With the user: Josh's role (full admin or a narrower editor role, a Backend ADR-0002 change), and whether he edits on
+    prod or on dev with a promote step. Build it admin-only until then.
