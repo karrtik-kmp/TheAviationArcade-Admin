@@ -467,3 +467,104 @@
       branches in `AuthForm`, `audiences.photographer/player`, `lib/submissions/export.ts`.
 - [ ] Give the Admin's dev server its own port so both can run side by side.
 - [ ] Decide how the copied common modules are kept in step (README lists them).
+
+## SRS requirements owned by the Admin (from `../docs/SRS.md`, 2026-11-26)
+
+These come from Kmphitech's proposal, numbered in the root SRS. Nothing in this list has been started. **Blocked** means waiting
+on the open issue named, so don't build it. **Backlog** has no order yet. The status after each ID is checked against this
+repo's code on `main` at `11a7fcf`, not copied from the SRS.
+
+### §4.1 Picture of the Day (AD-POD), with MG-POD-11/12
+
+- [x] AD-POD-02 / MG-POD-11 Schedule future entries by date. Built: the PotD desk (A3.3), `status: "scheduled"` with a
+      `dateKey`. Not yet walked against the real Backend's demo seed (see "Next").
+- [ ] AD-POD-01 Upload aircraft images. Partial: the Admin has the upload route (`POST /api/media` to backend media), but
+      no upload screen; photos come from photographers on the website. Backlog: decide whether staff upload in the Admin.
+- [ ] AD-POD-03 Manage photographer details. Partial. The PotD entry holds the photographer and Instagram text that staff
+      type. The photo's private submission details can only be removed by an admin (0.29.0); only the photographer can
+      set them.
+- [ ] AD-POD-04 Manage photographer social media links. Partial: one Instagram handle only. Other networks need a
+      Backend schema change.
+- [ ] AD-POD-05 Manage aircraft information. Partial: the PotD entry has a single `aircraft` text field. Separate make,
+      model and variant (MG-POD-04) need Backend fields first.
+- [ ] AD-POD-06 Preview a scheduled entry. Backlog: the PotD desk shows no preview of the entry. Only the Media desk
+      previews the photo.
+- [ ] AD-POD-07 Publish and unpublish entries. Partial: the PotD statuses are draft, scheduled, published and archived. Walk
+      unpublish (published → archived) against the real Backend.
+- [ ] AD-POD-08 *Optional:* reorder the recent gallery. Backlog; needs a Backend order field.
+- [ ] MG-POD-12 / MG-ADS-05 A sponsor on the Picture of the Day. Backlog. No sponsors are supplied; needs a Backend
+      sponsor model.
+
+### §4.2 Gallery (AD-GAL)
+
+- [ ] AD-GAL-01 Manage archived images. Backlog; unclear whether this means archived PotD entries or withdrawn photos.
+- [ ] AD-GAL-02 Set gallery order. Backlog; needs Backend support (with AD-POD-08).
+- [ ] AD-GAL-03 Mark featured images. Backlog: the Admin has no "featured" flag (the website's one was D1-era).
+
+### §4.3 Photographer submissions (AD-SUB)
+
+- [x] AD-SUB-01 Review photo submissions: the Submissions desk on backend media (fix wave B1a).
+- [x] AD-SUB-02 Approve or reject: publish, request changes or decline with a reason (API 0.30.0, `11a7fcf`). Not yet
+      on dev.
+- [x] AD-SUB-03 Manage submission status: the review queues (To review, Changes waiting, Changes requested, Declined),
+      reopen, and withdraw the decision.
+- [x] AD-SUB-04 View the release acknowledgement: the rights line shows "Photo Submission Agreement of 2026-12-01"
+      (API 0.29.0, `18cbe75`).
+- [x] AD-SUB-05 Feature an approved photo as the PotD: "Start a Plane of the Day draft" after publishing creates a PotD
+      entry with that `mediaId` (B1a).
+
+### §4.4 Game content (AD-CNT)
+
+- [ ] AD-CNT-01 Manage questions. **Blocked by OI-10** for editing. Today: the Aircraft Identifier and Military desks
+      check photographs and rights; question text and answers come only from client sheets.
+- [ ] AD-CNT-02 Airport database. Backlog; no client data supplied (rule 5).
+- [ ] AD-CNT-03 Aircraft database. Backlog; waits for Josh's attribute grid.
+- [ ] AD-CNT-04 Call sign database. Backlog; no client data.
+- [ ] AD-CNT-05 Tail identifier database. Backlog; no client data.
+- [ ] AD-CNT-06 Runway layouts. Backlog; no client data.
+- [ ] AD-CNT-07 Code Search data. Backlog; waits for the Backend import.
+- [ ] AD-CNT-08 Import and export client sheets. Partial in the Admin: Military releases can be uploaded, made live and
+      restored. The xlsx import itself (rules Q1–Q9) runs in the Backend; the Admin has no xlsx import or export screen.
+
+### §4.5 Progression (AD-PRG): all blocked by OI-09
+
+- [ ] AD-PRG-01 Status Point awards. **Blocked by OI-09.**
+- [ ] AD-PRG-02 Miles awards. **Blocked by OI-09.**
+- [ ] AD-PRG-03 Rank thresholds. **Blocked by OI-09.**
+- [ ] AD-PRG-04 Rewards. **Blocked by OI-09.**
+- [ ] AD-PRG-05 Subscription settings. **Blocked by OI-09.**
+
+### §4.6 First Class Pass (AD-FCP)
+
+- [ ] AD-FCP-01 Subscription benefits. Backlog.
+- [ ] AD-FCP-02 Premium downloadable content. Backlog (OI-17).
+- [ ] AD-FCP-03 Exclusive member content. Backlog.
+- [ ] AD-FCP-04 Partner discount offers. Backlog (OI-18).
+- [ ] AD-FCP-05 In-app premium benefits. **Blocked by OI-09** (multiplier) and **OI-11** (ads).
+- [ ] AD-FCP-06 *Future-ready:* membership tiers. Backlog.
+
+### §4.7 Marketplace (AD-MKT): all blocked by OI-02
+
+- [ ] AD-MKT-01 … AD-MKT-07 (categories, products, rich text, images, affiliate links, featured, publish). **Blocked by
+      OI-02.** If OI-02 is decided for it, the rich text must be sanitised before the website renders it.
+
+### §4.8 Users (AD-USR)
+
+- [ ] AD-USR-01 Find and view players. Partial: the Store desk's player view and the Users desk (roles only).
+- [ ] AD-USR-02 Manage a player's rank. Backlog. Waits on OI-25; a manual change is a ledger entry with a reason.
+- [ ] AD-USR-03 Monitor achievements. Backlog; needs a Backend read.
+- [ ] AD-USR-04 Statistics dashboard. Backlog; the metrics are not specified (OI-22).
+- [ ] AD-USR-05 First Class Pass memberships. Partial: entitlements are read-only in the Store player view. Manual grants
+      wait on OI-25.
+- [x] AD-USR-06 Grant and revoke staff and photographer roles: the Users desk and role requests (with
+      `ROLES_SOURCE=backend`).
+
+### §3.9 Sponsors (MG-ADS-04/05)
+
+- [ ] MG-ADS-04 A sponsor on a game module ("Presented by …"). Backlog. No sponsors are supplied; needs a Backend model.
+- [ ] MG-ADS-05: see MG-POD-12 above.
+
+### §4.9 Content the website needs (owner open, OI-19)
+
+- [ ] Partner directory (WB-PTR), FAQ (WB-FAQ), the contact-form inbox (WB-CON), and the homepage's featured partners and
+      ad placements (WB-HOM-07/08). These wait on OI-19 to decide whether the Admin owns them.
