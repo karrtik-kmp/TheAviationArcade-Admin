@@ -22,6 +22,7 @@ import {
   ImageSquare,
   Images,
   Newspaper,
+  Question,
   ShieldCheck,
   SquaresFour,
   Storefront,
@@ -39,6 +40,7 @@ import { MilitaryWorkspace, type ReleaseAction } from "@/components/MilitaryWork
 import { IdentifierDesk, type IdentifierChange } from "@/components/IdentifierDesk";
 import type { IdentifierItem } from "@/lib/identifier-desk";
 import { MediaDesk } from "@/components/MediaDesk";
+import { FaqDesk } from "@/components/FaqDesk";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
 import { ActivityDesk } from "@/components/ActivityDesk";
@@ -88,6 +90,7 @@ type Section =
   | "Media"
   | "Store"
   | "Users"
+  | "FAQ"
   | "Activity";
 type Notice = { kind: "error" | "success"; text: string } | null;
 
@@ -100,6 +103,7 @@ const navItems: { label: Section; icon: typeof SquaresFour }[] = [
   { label: "Media", icon: Images },
   { label: "Store", icon: Storefront },
   { label: "Users", icon: UsersThree },
+  { label: "FAQ", icon: Question },
   { label: "Activity", icon: ClockCounterClockwise },
 ];
 const ranks = rankNames;
@@ -1081,6 +1085,10 @@ export function AdminApp({
                   )}
                   {section === "Users" && !readOnly && manageRoles && (
                     <UsersDesk sessionKey={user.sessionKey} onBlocked={blockAccess} />
+                  )}
+                  {section === "FAQ" && (
+                    // The source arrives with Backend 0.33.0 (website docs/briefs/faq-cms-plan.md); until then the desk explains.
+                    <FaqDesk key={user.sessionKey} source={null} readOnly={readOnly} onBlocked={blockAccess} />
                   )}
                   {section === "Activity" && <ActivityDesk events={events} />}
                 </>

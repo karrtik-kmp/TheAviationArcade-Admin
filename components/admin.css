@@ -2452,3 +2452,82 @@
 .potd-create {
   margin-top: 16px;
 }
+
+/* The FAQ desk (website docs/briefs/faq-cms-plan.md). */
+.faq-desk-host {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+.faq-desk-host-live {
+  border-left-color: var(--error);
+  font-weight: 600;
+}
+.faq-desk-toolbar {
+  margin: 0 0 16px;
+}
+.faq-desk-muted {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.faq-desk-category {
+  margin: 0 0 16px;
+  padding: 16px;
+}
+.faq-desk-category .admin-panel-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.faq-desk-entries {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.faq-desk-entry {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.faq-desk-entry h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.faq-desk-answer p,
+.faq-desk-preview p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.faq-desk-editor {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.faq-desk-theirs {
+  padding: 10px 12px;
+  border: 1px solid var(--error);
+  border-radius: 8px;
+}
+.faq-desk-theirs p {
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.faq-desk-preview {
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+.faq-desk-changes {
+  margin: 0 0 8px;
+  padding-left: 20px;
+  max-height: 40vh;
+  overflow: auto;
+}
+.faq-desk-entry .admin-actions button,
+.faq-desk-category .admin-panel-header button {
+  min-height: 44px;
+  min-width: 44px;
+}

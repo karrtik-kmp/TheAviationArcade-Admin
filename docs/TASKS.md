@@ -571,7 +571,18 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
       (WB-HOM-07/08). These wait on OI-19 to decide whether the Admin owns them.
 - [ ] **FAQ desk (WB-FAQ; client request 2026-11-26).** Plan: `../website/docs/briefs/faq-cms-plan.md`, section "Admin".
       **Blocked on Backend contract 0.33.0**, which the Backend builds after the joint dev deploy and announces by commit.
-      Don't start until the user says go.
+      Don't start until the user says go. **Started 2026-11-26 (user's go).** Built before the contract and not
+      connected: `components/FaqDesk.tsx` and `lib/faq-desk.ts`, which has a provisional op shape and the `FaqSource`
+      interface. `AdminApp` passes `source={null}`, so the desk explains it isn't connected. The renderer is copied
+      byte-identical from website `4421f57` (`lib/faq-answer.ts`, `components/FaqAnswer.tsx`, `tests/faq-answer.test.mjs`).
+      - Verification: typecheck clean, `npm test` 415/415, `npm run build:node` complete.
+      - A browser walk with a temporary in-memory source (removed) covered: add, preview, keyboard reorder with
+        focus and announcement, the 409 keeping typed text, the Publish dialog with Escape returning focus, publish,
+        and 375 px.
+      - Code review: SHIP AFTER FIXES; the three majors and four minors are fixed. The fixes are not re-walked.
+      - Not walked: the Load-from-dev upload, the Remove dialogs, the demo view.
+      - Remaining, on 0.33.0: vendor the contract; check the ops and limits in `lib/faq-desk.ts`; write the Backend
+        adapter over the draft session (`drafts.open("faq", version)`), including export/import; walk it all.
   - The desk is staff only (admin role), and the demo admin sees an empty explanatory desk with the controls disabled
     and no sample questions.
   - It edits a draft of categories and entries: add, rename and remove, one PATCH operation per change.
