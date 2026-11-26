@@ -482,7 +482,7 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
       no upload screen; photos come from photographers on the website. Backlog: decide whether staff upload in the Admin.
 - [ ] AD-POD-03 Manage photographer details. Partial. The PotD entry holds the photographer and Instagram text that staff
       type. The photo's private submission details can only be removed by an admin (0.29.0); only the photographer can
-      set them.
+      set them. Which details are meant is open as **OI-26**.
 - [ ] AD-POD-04 Manage photographer social media links. Partial: one Instagram handle only. Other networks need a
       Backend schema change.
 - [ ] AD-POD-05 Manage aircraft information. Partial: the PotD entry has a single `aircraft` text field. Separate make,
@@ -497,7 +497,8 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
 
 ### §4.2 Gallery (AD-GAL)
 
-- [ ] AD-GAL-01 Manage archived images. Backlog; unclear whether this means archived PotD entries or withdrawn photos.
+- [ ] AD-GAL-01 Manage archived images. Backlog; what "archived" means is open as **OI-27** (archived PotD entries or
+      withdrawn photos).
 - [ ] AD-GAL-02 Set gallery order. Backlog; needs Backend support (with AD-POD-08).
 - [ ] AD-GAL-03 Mark featured images. Backlog: the Admin has no "featured" flag (the website's one was D1-era).
 
