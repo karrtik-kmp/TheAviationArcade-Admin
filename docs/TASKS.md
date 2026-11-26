@@ -587,4 +587,9 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
   - Checks: typecheck, test and build, then in the browser a keyboard reorder, the 409 path and a 375 px width.
   - Ruled 2026-11-26 (website `803c8fc`): Josh gets full `admin`, so the desk stays admin-only and needs no new role. An
     existing admin grants it in the Users desk on each host he uses.
-  - Still with the user: whether he edits on prod, or on dev with a promote step.
+  - Ruled 2026-11-26: Josh edits on the dev Admin, and the FAQ is copied to live. "Copy to live" uses the Backend's
+    export and import routes (item 10 in 0.33.0):
+    - On dev, "Download FAQ for live" saves the published FAQ file.
+    - On the live Admin, "Load FAQ from dev" uploads it into the draft and shows the changes against what is live; the
+      editor then publishes as usual.
+    - Every FAQ screen shows which host it is on, so nobody publishes on the wrong one.
