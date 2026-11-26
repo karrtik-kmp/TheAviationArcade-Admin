@@ -20,13 +20,9 @@ import {
   ClipboardText,
   ClockCounterClockwise,
   ImageSquare,
-  Images,
   Newspaper,
   Question,
   ShieldCheck,
-  SquaresFour,
-  Storefront,
-  UsersThree,
 } from "@phosphor-icons/react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -49,6 +45,8 @@ import { PotdDesk } from "@/components/PotdDesk";
 import { useReviewCounts, type ReviewCounts } from "@/components/useReviewCounts";
 import { countText, type ReviewCountKey } from "@/lib/review-counts";
 import { saveBody, type PotdForm, type PotdItem } from "@/lib/potd-desk";
+import { CoveragePanel, PlannedArea, SidebarNav, groupOf, sectionIcons } from "@/components/WorkspaceMap";
+import { isPlanned, type DeskSection, type Section } from "@/lib/srs-areas";
 import type { AuditEvent } from "@/lib/audit-desk";
 import "@/components/admin.css";
 import {
@@ -82,31 +80,14 @@ import {
 } from "@/lib/workspace-load";
 
 type AdminUser = { sessionKey: string };
-type Section =
-  | "Overview"
-  | "Submissions"
-  | "Aircraft Identifier"
-  | "Plane of the Day"
-  | "Military readiness"
-  | "Media"
-  | "Store"
-  | "Users"
-  | "FAQ"
-  | "Activity";
 type Notice = { kind: "error" | "success"; text: string } | null;
 
-const navItems: { label: Section; icon: typeof SquaresFour }[] = [
-  { label: "Overview", icon: SquaresFour },
-  { label: "Submissions", icon: ClipboardText },
-  { label: "Aircraft Identifier", icon: AirplaneInFlight },
-  { label: "Plane of the Day", icon: ImageSquare },
-  { label: "Military readiness", icon: AirplaneTilt },
-  { label: "Media", icon: Images },
-  { label: "Store", icon: Storefront },
-  { label: "Users", icon: UsersThree },
-  { label: "FAQ", icon: Question },
-  { label: "Activity", icon: ClockCounterClockwise },
-];
+/** The desks an account may open: the view-only demo sees the sample drafts; mock roles have no backend desks. */
+function deskVisible(section: DeskSection, readOnly: boolean, manageRoles: boolean) {
+  if (readOnly)
+    return !(["Submissions", "Military readiness", "Media", "Store", "Users", "Activity"] as DeskSection[]).includes(section);
+  return manageRoles || !(["Users", "Media", "Store", "Submissions"] as DeskSection[]).includes(section);
+}
 const ranks = rankNames;
 
 function prettyDate(value: string) {
@@ -740,6 +721,14 @@ export function AdminApp({
   }
 
   const view = sectionView(section, sources);
+  const canOpen = (desk: DeskSection) => deskVisible(desk, readOnly, manageRoles);
+  const SectionIcon = sectionIcons[section];
+  const navigate = (next: Section) => {
+    setSection(next);
+    setPotdArrival("");
+    setRecordId("");
+    setNotice(null);
+  };
   // The demo preview keeps the sample Aircraft Identifier drafts; staff use the backend desk (A3.2).
   const contentKind = section === "Aircraft Identifier" ? "identifier" : "potd";
   const contentRecords = records.filter(
@@ -838,49 +827,15 @@ export function AdminApp({
                 {readOnly ? "Demo preview · view only" : "Editorial workspace"}
               </span>
             </div>
-            <nav ref={navRef} aria-label="Admin sections" className="admin-nav">
-              <span className="admin-nav-caption">WORKSPACE</span>
-              {(readOnly
-                ? navItems.filter(
-                    ({ label }) =>
-                      label !== "Submissions" &&
-                      label !== "Military readiness" &&
-                      label !== "Media" &&
-                      label !== "Store" &&
-                      label !== "Users" &&
-                      label !== "Activity",
-                  )
-                : navItems.filter(
-                    ({ label }) =>
-                      manageRoles ||
-                      (label !== "Users" && label !== "Media" && label !== "Store" && label !== "Submissions"),
-                  )
-              ).map(({ label, icon: Icon }) => (
-                <button
-                  key={label}
-                  onClick={() => {
-                    setSection(label);
-                    setPotdArrival("");
-                    setRecordId("");
-                    setNotice(null);
-                  }}
-                  className={`admin-nav-item ${section === label ? "active" : ""}`}
-                  aria-current={section === label ? "page" : undefined}
-                >
-                  <Icon
-                    size={19}
-                    weight={section === label ? "fill" : "regular"}
-                  />
-                  {label}
-                  {label === "Submissions" && reviewDesks && !!reviews.counts.toReview?.n && (
-                    <span className="admin-nav-count">
-                      {countText(reviews.counts.toReview)}
-                      <span className="sr-only"> to review</span>
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
+            <SidebarNav
+              navRef={navRef}
+              section={section}
+              visible={canOpen}
+              onSelect={navigate}
+              reviewCount={
+                reviewDesks && reviews.counts.toReview?.n ? countText(reviews.counts.toReview) : ""
+              }
+            />
             <div className="admin-side-bottom">
               <ShieldCheck size={17} />
               <span>
@@ -897,8 +852,12 @@ export function AdminApp({
           <main className="admin-main">
             <header className="admin-topbar">
               <div className="admin-topbar-title">
-                <span className="admin-breadcrumb">Editorial /</span>
+                <span className="admin-topbar-icon" aria-hidden>
+                  <SectionIcon size={18} weight="fill" />
+                </span>
+                <span className="admin-breadcrumb">{groupOf(section)} /</span>
                 <b>{section}</b>
+                {isPlanned(section) && <span className="admin-topbar-planned">Planned</span>}
               </div>
               <div className="admin-topbar-tools">
                 <ThemeToggle />
@@ -967,7 +926,8 @@ export function AdminApp({
                     <Overview
                       records={records}
                       events={events}
-                      onNavigate={setSection}
+                      onNavigate={navigate}
+                      canOpen={canOpen}
                       readOnly={readOnly}
                       reviews={reviewDesks ? reviews : null}
                       unavailable={view.unavailable.map(({ source }) => source)}
@@ -1074,6 +1034,9 @@ export function AdminApp({
                     <FaqDesk key={user.sessionKey} source={manageRoles && !readOnly ? faqSource : null} readOnly={readOnly} onBlocked={blockAccess} />
                   )}
                   {section === "Activity" && <ActivityDesk events={events} />}
+                  {isPlanned(section) && (
+                    <PlannedArea key={section} section={section} onNavigate={navigate} canOpen={canOpen} />
+                  )}
                 </>
               )}
             </div>
@@ -1088,6 +1051,7 @@ function Overview({
   records,
   events,
   onNavigate,
+  canOpen,
   readOnly,
   reviews,
   unavailable,
@@ -1098,6 +1062,7 @@ function Overview({
   records: EditorialRecord[];
   events: AuditEvent[];
   onNavigate: (section: Section) => void;
+  canOpen: (section: DeskSection) => boolean;
   readOnly: boolean;
   /** The game backend's review lists (an admin on backend roles); null otherwise, and the review parts are left out. */
   reviews: ReviewCounts | null;
@@ -1117,12 +1082,12 @@ function Overview({
     <>
       <div className="admin-heading">
         <div>
-          <p className="eyebrow">EDITORIAL OPERATIONS</p>
-          <h1>{readOnly ? "Demo preview" : "Good to have you back."}</h1>
+          <p className="eyebrow">{readOnly ? "DEMO PREVIEW · VIEW ONLY" : "EDITORIAL OPERATIONS"}</p>
+          <h1>{readOnly ? "Sample editorial drafts" : "Photos, game content and the website"}</h1>
           <p>
             {readOnly
               ? "Browse the sample editorial drafts. This demo account can view content but cannot edit, review or publish."
-              : "Review photos and prepare game content on the game backend."}
+              : "Review photos, prepare game content and keep the website's FAQ current. Every change is written to the game backend under your own account."}
           </p>
         </div>
         {reviews && (
@@ -1242,8 +1207,31 @@ function Overview({
             </span>
             <span>→</span>
           </button>
+          {canOpen("Military readiness") && (
+            <button onClick={() => onNavigate("Military readiness")}>
+              <span className="shortcut-icon">
+                <AirplaneTilt size={19} />
+              </span>
+              <span>
+                <b>Military readiness</b>
+                <small>Releases from the client&apos;s military sheet</small>
+              </span>
+              <span>→</span>
+            </button>
+          )}
+          <button onClick={() => onNavigate("FAQ")}>
+            <span className="shortcut-icon">
+              <Question size={19} />
+            </span>
+            <span>
+              <b>FAQ</b>
+              <small>Questions, answers and gameplay guides for the website</small>
+            </span>
+            <span>→</span>
+          </button>
         </section>
       </div>
+      <CoveragePanel onNavigate={onNavigate} canOpen={canOpen} />
       {readOnly && (
         <p className="admin-demo-note">
           These are sample drafts for the demo preview. They do not publish into the game backend.
