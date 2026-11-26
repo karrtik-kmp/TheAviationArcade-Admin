@@ -33,7 +33,10 @@ test("text is stored as the Backend does: CRLF to LF, trimmed, counted in code p
   assert.match(faqTextError("two\nlines", "question"), /one line/);
   assert.match(faqTextError("   ", "title"), /required/);
   assert.match(faqTextError("a\tb", "answer"), /control/);
-  assert.match(faqTextError("a b", "answer"), /control/);
+  assert.match(faqTextError("a\u2028b", "answer"), /control/);
+  assert.match(faqTextError("a\u202Eb", "answer"), /direction/, "bidi controls are refused");
+  assert.match(faqTextError("a\u200Fb", "question"), /direction/);
+  assert.equal(faqTextError("line\rnext", "answer"), undefined, "a lone CR is a newline");
   assert.match(faqTextError("a\uD800b", "answer"), /broken/);
   assert.equal(faqTextError("\u{1F600}".repeat(faqLimits.question), "question"), undefined, "emoji count once");
   assert.match(faqTextError("x".repeat(faqLimits.title + 1), "title"), /limit is 80/);
@@ -52,14 +55,17 @@ test("operations change one thing each", () => {
   const renamed = applyFaqOp(doc, { op: "upsertCategory", id: "pass", title: " Pass " });
   assert.equal(renamed.categories[1].title, "Pass");
   assert.equal(applyFaqOp(doc, { op: "upsertCategory", id: "new", title: "New" }).categories.length, 3);
-  assert.deepEqual(applyFaqOp(doc, { op: "moveCategory", id: "pass", to: 0 }).categories.map((c) => c.id), ["pass", "account"]);
-  assert.deepEqual(applyFaqOp(doc, { op: "removeCategory", id: "account" }).categories.map((c) => c.id), ["pass"]);
-  const moved = applyFaqOp(doc, { op: "moveEntry", categoryId: "account", id: "delete", to: 0 });
+  assert.deepEqual(applyFaqOp(doc, { op: "moveCategory", id: "pass", position: 0 }).categories.map((c) => c.id), ["pass", "account"]);
+  assert.equal(applyFaqOp(doc, { op: "removeCategory", id: "account" }), doc, "a category with entries can't be removed");
+  assert.deepEqual(applyFaqOp(doc, { op: "removeCategory", id: "pass" }).categories.map((c) => c.id), ["account"]);
+  const across = applyFaqOp(doc, { op: "moveEntry", id: "delete", categoryId: "pass", position: 0 });
+  assert.deepEqual(across.categories.map((c) => c.entries.map((e) => e.id)), [["sign-in"], ["delete"]], "moves across categories");
+  const moved = applyFaqOp(doc, { op: "moveEntry", id: "delete", categoryId: "account", position: 0 });
   assert.deepEqual(moved.categories[0].entries.map((e) => e.id), ["delete", "sign-in"]);
   const edited = applyFaqOp(doc, { op: "upsertEntry", categoryId: "account", id: "sign-in", question: "Q", answer: "A\r\nB" });
   assert.deepEqual(edited.categories[0].entries[0], { id: "sign-in", question: "Q", answer: "A\nB" });
-  assert.equal(applyFaqOp(doc, { op: "removeEntry", categoryId: "account", id: "delete" }).categories[0].entries.length, 1);
-  assert.equal(applyFaqOp(doc, { op: "moveEntry", categoryId: "nope", id: "x", to: 0 }), doc, "unknown ids change nothing");
+  assert.equal(applyFaqOp(doc, { op: "removeEntry", id: "delete" }).categories[0].entries.length, 1);
+  assert.equal(applyFaqOp(doc, { op: "moveEntry", id: "x", categoryId: "nope", position: 0 }), doc, "unknown ids change nothing");
   assert.equal(doc.categories[0].entries[0].id, "sign-in", "the input is never mutated");
 });
 
@@ -68,7 +74,7 @@ test("the change list compares by id", () => {
   assert.deepEqual(faqChanges(null, emptyFaq()), []);
   assert.deepEqual(faqChanges(null, doc), ['New category "Account" with 2 questions.', 'New category "First Class Pass" with 0 questions.']);
   let next = applyFaqOp(doc, { op: "upsertCategory", id: "pass", title: "Pass" });
-  next = applyFaqOp(next, { op: "moveEntry", categoryId: "account", id: "delete", to: 0 });
+  next = applyFaqOp(next, { op: "moveEntry", id: "delete", categoryId: "account", position: 0 });
   next = applyFaqOp(next, { op: "upsertEntry", categoryId: "account", id: "sign-in", question: "How do I sign in?", answer: "New." });
   next = applyFaqOp(next, { op: "upsertEntry", categoryId: "pass", id: "price", question: "What does it cost?", answer: "See the app." });
   assert.deepEqual(faqChanges(doc, next), [
@@ -77,12 +83,13 @@ test("the change list compares by id", () => {
     'Category "First Class Pass" renamed to "Pass".',
     'New question in "Pass": "What does it cost?".',
   ]);
-  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "removeCategory", id: "account" })), ['Category "Account" removed.'],
-    "removing one doesn't move the rest");
-  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "removeEntry", categoryId: "account", id: "sign-in" })), [
+  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "removeCategory", id: "pass" })), ['Category "First Class Pass" removed.']);
+  const withoutFirst = { categories: doc.categories.slice(1) };
+  assert.deepEqual(faqChanges(doc, withoutFirst), ['Category "Account" removed.'], "removing one doesn't move the rest");
+  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "removeEntry", id: "sign-in" })), [
     'Question removed from "Account": "How do I sign in?".',
   ]);
-  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "moveCategory", id: "pass", to: 0 })), [
+  assert.deepEqual(faqChanges(doc, applyFaqOp(doc, { op: "moveCategory", id: "pass", position: 0 })), [
     'Category "First Class Pass" moved to position 1.',
     'Category "Account" moved to position 2.',
   ]);

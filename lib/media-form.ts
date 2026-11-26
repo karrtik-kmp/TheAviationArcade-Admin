@@ -401,7 +401,7 @@ export function mediaOutcome(status: number, code?: string | null): MediaOutcome
   if (code === "IDEMPOTENCY_KEY_REUSED") return "keyReused";
   if (code === "VERSION_CONFLICT" || code === "NOTHING_TO_PUBLISH" || code === "RIGHTS_ALREADY_STATED" || code === "MEDIA_DECLINED") return "conflict";
   if (code === "TOO_LARGE" || code === "UNSUPPORTED_TYPE" || code === "MEDIA_INVALID") return "fileRejected";
-  if (code === "BACKEND_CONTRACT") return "error";
+  if (code === "BACKEND_CONTRACT" || code === "SUBMISSION_LIMIT") return "error";
   if (
     !Number.isInteger(status) ||
     status < 100 ||

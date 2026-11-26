@@ -53,6 +53,7 @@ export const auditActions = [
   "release_activate",
   "release_restore",
   "media_review",
+  "role_self_activate",
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
 

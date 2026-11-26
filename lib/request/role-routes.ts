@@ -111,7 +111,8 @@ function targetPrincipal(ctx: Ctx) {
 async function listRoles(ctx: Ctx) {
   requireBackendRoles(ctx);
   const url = new URL(ctx.request.url);
-  const state = url.searchParams.get("state") ?? "pending";
+  // 0.32.0: photographers activate themselves, so the pending queue stays empty; the default is who holds a role.
+  const state = url.searchParams.get("state") ?? "active";
   if (!(roleStates as readonly string[]).includes(state)) throw new HttpError(400, "Unknown role state.");
   const query = new URLSearchParams({ state, limit: "100" });
   const cursor = url.searchParams.get("cursor");

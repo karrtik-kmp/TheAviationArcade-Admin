@@ -3,9 +3,9 @@
  * document the Backend stores as a draft and publishes (API 0.33.0, not yet vendored). Every change is one small
  * operation, so the desk never sends the whole FAQ.
  *
- * PROVISIONAL until Backend 0.33.0 is vendored: the document shape, the operation names and the limits below follow
- * the plan's Backend section, not a contract. When the contract lands, check each against `contracts/openapi.yaml`
- * and change them here; the desk only uses what this module exports. No zod: the browser imports this.
+ * Checked against the vendored contract (API 0.33.0: `FaqDocument`, `FaqOperation`, the text rule). The server-side
+ * schemas in `lib/request/faq.ts` use `faqTextError` from here, so the screen and the server can't drift. No zod: the
+ * browser imports this.
  */
 
 export type FaqEntry = { id: string; question: string; answer: string };
@@ -16,14 +16,17 @@ export type FaqDoc = { categories: FaqCategory[] };
 export const faqLimits = { title: 80, question: 200, answer: 2000, categories: 30, entries: 300 } as const;
 export const faqIdPattern = /^[a-z0-9-]{1,64}$/;
 
-/** One change, sent alone with the draft's base version. */
+/**
+ * openapi `FaqOperation`: one change, sent alone with the draft's version. `position` is the 0-based index in the
+ * resulting list. Only an empty category can be removed; an entry moves between categories with `moveEntry`.
+ */
 export type FaqOp =
   | { op: "upsertCategory"; id: string; title: string }
   | { op: "removeCategory"; id: string }
-  | { op: "moveCategory"; id: string; to: number }
+  | { op: "moveCategory"; id: string; position: number }
   | { op: "upsertEntry"; categoryId: string; id: string; question: string; answer: string }
-  | { op: "removeEntry"; categoryId: string; id: string }
-  | { op: "moveEntry"; categoryId: string; id: string; to: number };
+  | { op: "removeEntry"; id: string }
+  | { op: "moveEntry"; id: string; categoryId: string; position: number };
 
 export const emptyFaq = (): FaqDoc => ({ categories: [] });
 const codePoints = (text: string) => [...text].length;
@@ -33,15 +36,22 @@ export function normaliseFaqText(raw: string) {
   return raw.replace(/\r\n?/g, "\n").trim();
 }
 
-/** The field's problem, or undefined. Newlines only in answers; no other control character; no lone surrogate. */
+// openapi `FaqDocument` text rule: U+2028/U+2029 and the bidi controls are refused like control characters.
+const bidi = new Set([0x200e, 0x200f, 0x061c, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069]);
+
+/**
+ * The field's problem, or undefined (openapi `FaqDocument` text rule): CRLF and a lone CR become LF; trimmed and not
+ * empty; newlines only in answers; no other control character, no U+2028/U+2029, no bidi control, no lone surrogate.
+ */
 export function faqTextError(raw: string, field: "title" | "question" | "answer"): string | undefined {
   const label = field === "title" ? "The category title" : field === "question" ? "The question" : "The answer";
   const text = raw.replace(/\r\n?/g, "\n");
   for (const ch of text) {
     const code = ch.codePointAt(0) ?? 0;
     if (code === 0x0a && field !== "answer") return `${label} must be one line.`;
-    const control = code < 0x20 ? code !== 0x0a : (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029;
-    if (control) return `${label} can't contain control characters.`;
+    const control =
+      code < 0x20 ? code !== 0x0a : (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029 || bidi.has(code);
+    if (control) return `${label} can't contain control or direction characters.`;
     if (code >= 0xd800 && code <= 0xdfff) return `${label} contains a broken character. Retype it.`;
   }
   const length = codePoints(normaliseFaqText(text));
@@ -87,24 +97,40 @@ export function applyFaqOp(doc: FaqDoc, op: FaqOp): FaqDoc {
       if (i < 0) return { categories: [...categories, { id: op.id, title, entries: [] }] };
       return { categories: categories.map((category, n) => (n === i ? { ...category, title } : category)) };
     }
-    case "removeCategory":
-      return { categories: categories.filter((category) => category.id !== op.id) };
+    case "removeCategory": {
+      const i = at(op.id);
+      // The backend refuses removing a category that still has entries (422); nothing changes.
+      return i < 0 || categories[i].entries.length ? doc : { categories: categories.filter((category) => category.id !== op.id) };
+    }
     case "moveCategory": {
       const i = at(op.id);
-      return i < 0 ? doc : { categories: move(categories, i, op.to) };
+      return i < 0 ? doc : { categories: move(categories, i, op.position) };
     }
-    default: {
+    case "upsertEntry": {
       const i = at(op.categoryId);
       if (i < 0) return doc;
       const entries = categories[i].entries;
       const j = entries.findIndex((entry) => entry.id === op.id);
-      let next = entries;
-      if (op.op === "upsertEntry") {
-        const entry = { id: op.id, question: normaliseFaqText(op.question), answer: normaliseFaqText(op.answer) };
-        next = j < 0 ? [...entries, entry] : entries.map((old, n) => (n === j ? entry : old));
-      } else if (op.op === "removeEntry") next = entries.filter((entry) => entry.id !== op.id);
-      else if (j >= 0) next = move(entries, j, op.to);
+      const entry = { id: op.id, question: normaliseFaqText(op.question), answer: normaliseFaqText(op.answer) };
+      const next = j < 0 ? [...entries, entry] : entries.map((old, n) => (n === j ? entry : old));
       return { categories: categories.map((category, n) => (n === i ? { ...category, entries: next } : category)) };
+    }
+    case "removeEntry":
+      return {
+        categories: categories.map((category) =>
+          category.entries.some((entry) => entry.id === op.id)
+            ? { ...category, entries: category.entries.filter((entry) => entry.id !== op.id) }
+            : category,
+        ),
+      };
+    case "moveEntry": {
+      const target = at(op.categoryId);
+      const found = categories.flatMap((category) => category.entries).find((entry) => entry.id === op.id);
+      if (target < 0 || !found) return doc;
+      const without = categories.map((category) => ({ ...category, entries: category.entries.filter((entry) => entry.id !== op.id) }));
+      const entries = [...without[target].entries];
+      entries.splice(Math.max(0, Math.min(op.position, entries.length)), 0, found);
+      return { categories: without.map((category, n) => (n === target ? { ...category, entries } : category)) };
     }
   }
 }

@@ -1,5 +1,6 @@
 /**
- * The Overview's review counts (A3 fix wave, B1b): photos to review, changes waiting and photographers asking to join.
+ * The Overview's review counts (A3 fix wave, B1b): photos to review and changes waiting. (Photographer requests left with
+ * API 0.32.0: a verified account turns photo submission on itself.)
  * The backend's lists are paged with no total (openapi `MediaList`, `AdminRoleList`), so a count reads ONE page and
  * says "50+" when the page has a next one, rather than paging through everything on every visit. No zod: the
  * browser imports this.
@@ -53,6 +54,5 @@ export function reviewBlock(replies: readonly ReviewReply[]): 401 | 403 | 409 | 
 export const reviewCountUrls = {
   toReview: "/api/media?state=unverified&review=none",
   changes: "/api/media?pending=true&review=none",
-  photographers: "/api/admin/roles?state=pending",
 } as const;
 export type ReviewCountKey = keyof typeof reviewCountUrls;

@@ -29,14 +29,13 @@ test("the counts read the Admin's own routes, with only filters those routes acc
   assert.deepEqual(reviewCountUrls, {
     toReview: "/api/media?state=unverified&review=none",
     changes: "/api/media?pending=true&review=none",
-    photographers: "/api/admin/roles?state=pending",
   });
 });
 
 test("any one list's 401, 403 or ACCOUNT_CHANGED blocks, so no count is applied", () => {
   const ok = (key) => ({ key, status: 200, body: page(2) });
-  assert.equal(reviewBlock([ok("toReview"), ok("changes"), { key: "photographers", status: 200, body: { requests: [], nextCursor: null } }]), null);
-  assert.equal(reviewBlock([ok("toReview"), { key: "changes", status: 403, body: { code: "FORBIDDEN" } }, ok("photographers")]), 403);
+  assert.equal(reviewBlock([ok("toReview"), ok("changes")]), null);
+  assert.equal(reviewBlock([ok("toReview"), { key: "changes", status: 403, body: { code: "FORBIDDEN" } }]), 403);
   assert.equal(reviewBlock([{ key: "toReview", status: 401, body: null }, ok("changes")]), 401);
   assert.equal(reviewBlock([ok("toReview"), { key: "changes", status: 409, body: { code: "ACCOUNT_CHANGED" } }]), 409);
   // An outage or a mock deployment is not the account changing: those lists show as "could not load" instead.

@@ -54,6 +54,8 @@ export const mediaErrorCodes = {
   RIGHTS_ALREADY_STATED: "RIGHTS_ALREADY_STATED",
   // 0.30.0: the photo was declined, so its non-admin owner can't change it. An admin is never refused this.
   MEDIA_DECLINED: "MEDIA_DECLINED",
+  // 0.32.0: 20 photos already waiting for review; retrying won't help until some are reviewed.
+  SUBMISSION_LIMIT: "SUBMISSION_LIMIT",
 } as const;
 export type MediaErrorCode = (typeof mediaErrorCodes)[keyof typeof mediaErrorCodes];
 

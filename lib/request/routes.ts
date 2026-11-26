@@ -11,6 +11,7 @@ import { militaryRoutes } from "./military-routes.ts";
 import { identifierRoutes } from "./identifier-routes.ts";
 import { auditRoutes } from "./audit-routes.ts";
 import { potdRoutes } from "./potd-routes.ts";
+import { faqRoutes } from "./faq-routes.ts";
 import { storeRoutes } from "./store-routes.ts";
 import { storePurchaseRoutes } from "./store-purchase-routes.ts";
 
@@ -21,6 +22,7 @@ export const routes: Route[] = [
   ...identifierRoutes,
   ...auditRoutes,
   ...potdRoutes,
+  ...faqRoutes,
   ...mediaRoutes,
   ...storeRoutes,
   ...storePurchaseRoutes,

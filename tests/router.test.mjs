@@ -258,7 +258,7 @@ test("a decision forwards the revision the admin saw to the encoded account path
   const backend = fakeBackend((method, path, body) => ({ role: adminRow({ state: "active", revision: body.revision + 1 }) }));
   const { call } = harness({ backend });
   const principal = encodeURIComponent(`firebase:${project}:lens`);
-  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/approve`, {
+  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/block`, {
     as: "staff",
     body: { revision: 3, note: "  Good portfolio  " },
   });
@@ -266,7 +266,7 @@ test("a decision forwards the revision the admin saw to the encoded account path
   assert.deepEqual(backend.calls, [
     {
       method: "POST",
-      path: `/v1/admin/accounts/${principal}/roles/photographer/approve`,
+      path: `/v1/admin/accounts/${principal}/roles/photographer/block`,
       body: { revision: 3, note: "Good portfolio" },
       token: "staff",
     },
@@ -277,11 +277,11 @@ test("only offered actions reach the backend, with a revision and nothing else",
   const backend = fakeBackend(() => ({ role: adminRow() }));
   const { call } = harness({ backend });
   const path = (role, action) => `admin/roles/firebase:${project}:lens/${role}/${action}`;
-  for (const [role, action] of [["admin", "approve"], ["admin", "block"], ["admin", "unblock"], ["player", "revoke"], ["admin", "grant"], ["photographer", "delete"]])
+  for (const [role, action] of [["admin", "approve"], ["admin", "block"], ["admin", "unblock"], ["player", "revoke"], ["admin", "grant"], ["photographer", "delete"], ["photographer", "approve"], ["photographer", "reject"]])
     assert.equal((await call("POST", path(role, action), { as: "staff", body: { revision: 1 } })).status, 404, `${role} ${action}`);
-  assert.equal((await call("POST", path("photographer", "reject"), { as: "staff", body: {} })).status, 400, "revision required");
+  assert.equal((await call("POST", path("photographer", "unblock"), { as: "staff", body: {} })).status, 400, "revision required");
   assert.equal(
-    (await call("POST", path("photographer", "reject"), { as: "staff", body: { revision: 1, state: "active" } })).status,
+    (await call("POST", path("photographer", "unblock"), { as: "staff", body: { revision: 1, state: "active" } })).status,
     400,
     "no other fields",
   );
@@ -312,7 +312,7 @@ test("a backend refusal keeps its meaning: 403 is FORBIDDEN, not a lost session"
     throw new BackendError(403, "forbidden");
   });
   const { call } = harness({ backend });
-  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/approve`, {
+  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/block`, {
     as: "staff",
     body: { revision: 1 },
   });
@@ -323,7 +323,7 @@ test("an account id that is not a principal never reaches the backend", async ()
   const backend = fakeBackend(() => ({ role: adminRow() }));
   const { call } = harness({ backend });
   for (const principal of ["..", "firebase:p", "firebase:p:a/b", "google:p:uid", `firebase:${project}:a:b`]) {
-    const res = await call("POST", ["admin", "roles", principal, "photographer", "approve"].join("/"), {
+    const res = await call("POST", ["admin", "roles", principal, "photographer", "block"].join("/"), {
       as: "staff",
       body: { revision: 1 },
     });
@@ -347,7 +347,7 @@ test("mock roles from the deployment's lists: verified emails only, and nothing 
   assert.deepEqual([media.status, media.body.code], [404, "MEDIA_UNAVAILABLE"]);
   for (const [method, path, as] of [
     ["GET", "admin/roles", "staff"],
-    ["POST", `admin/roles/firebase:${project}:lens/photographer/approve`, "staff"],
+    ["POST", `admin/roles/firebase:${project}:lens/photographer/block`, "staff"],
   ]) {
     const res = await call(method, path, { as, body: method === "POST" ? { revision: 1 } : undefined });
     assert.deepEqual([res.status, res.body.code], [404, "ROLES_MOCK"], `${method} ${path}`);
@@ -405,7 +405,7 @@ test("an admin's typed email is set or cleared with a PUT fenced by revision", a
 test("notes with control characters are refused before the backend", async () => {
   const backend = fakeBackend(() => ({ role: adminRow() }));
   const { call } = harness({ backend });
-  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/reject`, {
+  const res = await call("POST", `admin/roles/firebase:${project}:lens/photographer/unblock`, {
     as: "staff",
     body: { revision: 1, note: "line one\nline two" },
   });

@@ -417,6 +417,15 @@
       - the test shows U+2028 as an escape.
     - The reviewer also noted that `decideReview` is covered only by the browser walk, with no unit test.
     - Not run against the real Backend 0.30.0, which is not on `dev.api`.
+- 2026-11-26: Backend 0.32.0 and 0.33.0 vendored (Backend `c0a2b62`).
+  - 0.31.0 (Code Search) needs nothing in the Admin.
+  - 0.32.0, self-serve photographers (`docs/briefs/self-serve-photographer.md`):
+    - photographer approve/reject are gone from `roleActions` and the Users desk, which now opens on Active;
+    - the Submissions "New photographers" panel and its count are gone;
+    - the role list defaults to `active`;
+    - the audit actions gain `role_self_activate`;
+    - the media upload's 429 `submission_limit` is `SUBMISSION_LIMIT` (not retryable).
+  - 0.33.0: the FAQ desk is connected (see the FAQ entry under "Next").
 
 ## Next
 
@@ -581,8 +590,20 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
         and 375 px.
       - Code review: SHIP AFTER FIXES; the three majors and four minors are fixed. The fixes are not re-walked.
       - Not walked: the Load-from-dev upload, the Remove dialogs, the demo view.
-      - Remaining, on 0.33.0: vendor the contract; check the ops and limits in `lib/faq-desk.ts`; write the Backend
-        adapter over the draft session (`drafts.open("faq", version)`), including export/import; walk it all.
+      - **Connected 2026-11-26 on Backend 0.33.0 (`c0a2b62`).**
+        - The contract is vendored. `lib/request/faq.ts` and `faq-routes.ts` provide `/api/admin/faq`, `/discard`,
+          `/publish`, `/export` and `/import`; only `/import` takes 3 MB.
+        - Every write is followed by a fresh read. A write that succeeded but whose read then failed answers
+          `{saved:true}`, and the desk reads again.
+        - `lib/faq-source.ts` runs over the draft session. The desk's ops, text rule (bidi controls) and empty-category
+          rule match the contract.
+        - Verification: typecheck clean, `npm test` 423/423, `npm run build:node` complete.
+        - Browser walk against a LOCAL FAKE with 0.33.0 rules: add a category and a question; Remove is disabled on a
+          non-empty category; the 409 kept the text; the same item changed by someone else showed theirs with
+          "Replace with mine" / "Keep theirs"; publish; Load from dev showed the change list and replaced the draft;
+          Download for live saved `faq-v1.json`.
+        - Code review: SHIP AFTER FIXES; the major and five minors are fixed.
+        - Not run against the real Backend 0.33.0, which is not on dev.api; it has its own deploy sign-off.
   - The desk is staff only (admin role), and the demo admin sees an empty explanatory desk with the controls disabled
     and no sample questions.
   - It edits a draft of categories and entries: add, rename and remove, one PATCH operation per change.

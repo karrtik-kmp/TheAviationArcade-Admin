@@ -93,6 +93,9 @@ function backendFailure(error: unknown, who: Who, ownerOnly?: string): never {
         throw new HttpError(422, "This version can't be published yet. It needs a licence name, a credit where one is required, and a rights statement.", codes.LICENCE_INCOMPLETE);
       throw new HttpError(502, "The game backend answered off its contract.", codes.BACKEND_CONTRACT);
     }
+    // 0.32.0: a non-admin owner with 20 photos waiting for review can't add another (admins are exempt).
+    if (status === 429 && code === "submission_limit")
+      throw new HttpError(429, "This account already has 20 photos waiting for review. Add more once some are reviewed.", codes.SUBMISSION_LIMIT);
     if (status === 429)
       throw new HttpError(429, "Too many requests. Wait a moment and try again.", codes.RATE_LIMITED, undefined, error.retryAfter === undefined ? undefined : Math.ceil(error.retryAfter));
     if (status === 503 && code === "storage_unavailable")

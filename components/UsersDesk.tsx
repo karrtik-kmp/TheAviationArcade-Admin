@@ -8,53 +8,44 @@ import { sitePath } from "@/lib/paths";
 import type { AdminRoleRow, RoleAction, RoleState } from "@/lib/request/roles";
 
 /**
- * Users and roles, as the game backend records them (openapi 0.15.0). Admins approve or reject
- * photographer requests, remove a role (the account may ask again), block an account from the
+ * Users and roles, as the game backend records them (openapi 0.15.0; 0.32.0: a verified account turns photo
+ * submission on itself, so there are no requests to approve). Admins remove a role, block an account from the
  * photographer role (lasting, until unblocked) and correct an admin's typed email. Every change
  * sends the revision the admin saw; when someone else decided first the list reloads and nothing is
  * overwritten. Granting admin is not offered here: it stays with the backend's operator command.
  */
 
 const views: { state: RoleState; label: string; hint: string }[] = [
-  { state: "pending", label: "Awaiting approval", hint: "Photographer requests waiting for a decision" },
   { state: "active", label: "Active", hint: "Accounts that hold a role now" },
-  { state: "blocked", label: "Blocked", hint: "Accounts that can't ask to be a photographer until unblocked" },
+  { state: "blocked", label: "Blocked", hint: "Accounts that can't submit photos until unblocked" },
   {
     state: "revoked",
     label: "Removed",
-    hint: "Roles that were taken away or unblocked; the account may ask again",
+    hint: "Roles that were taken away or unblocked; the account can turn photo submission on again",
   },
-  { state: "rejected", label: "Rejected", hint: "Photographer requests that were turned down" },
+  { state: "rejected", label: "Rejected", hint: "Requests turned down before submission became self-serve (2026-11-26)" },
 ];
 const roleLabel = { player: "Player", photographer: "Photographer", admin: "Admin" } as const;
 const actionLabel: Record<RoleAction, string> = {
-  approve: "Approve",
-  reject: "Reject",
   block: "Block",
   unblock: "Unblock",
   revoke: "Remove",
 };
 const actionDone: Record<RoleAction, string> = {
-  approve: "approved as a photographer",
-  reject: "turned down",
   block: "blocked from the photographer role",
-  unblock: "unblocked and may ask again",
+  unblock: "unblocked and can submit photos again",
   revoke: "removed from that role",
 };
 function consequence(row: AdminRoleRow, action: RoleAction) {
   switch (action) {
-    case "approve":
-      return "They will be able to send photos for review.";
-    case "reject":
-      return "They can ask again later, and the request will come back here.";
     case "block":
-      return "They will lose photographer access, if they had it, and can't ask again until someone unblocks them.";
+      return "They will lose photographer access, if they had it, and can't turn it on again until someone unblocks them.";
     case "unblock":
-      return "They won't be a photographer, but they will be able to ask again.";
+      return "They won't be a photographer, but they can turn photo submission on again themselves.";
     case "revoke":
       return row.role === "admin"
         ? "They will lose access to this workspace at once."
-        : "They will no longer be able to send photos. They can ask again, and the request will come back here. Use Block to stop that.";
+        : "They will no longer be able to send photos, but they can turn photo submission on again themselves. Use Block to stop that.";
   }
 }
 
@@ -92,7 +83,7 @@ export function UsersDesk({
   /** The workspace's account fence: clears private data and reports the access change. */
   onBlocked: (status: number) => void;
 }) {
-  const [state, setState] = useState<RoleState>("pending");
+  const [state, setState] = useState<RoleState>("active");
   const stateRef = useRef(state);
   stateRef.current = state;
   const [rows, setRows] = useState<AdminRoleRow[]>([]);
@@ -269,9 +260,8 @@ export function UsersDesk({
 
   function actionsFor(row: AdminRoleRow): (RoleAction | "email")[] {
     if (row.role === "photographer") {
-      if (row.state === "pending") return ["approve", "reject", "block"];
       if (row.state === "active") return ["revoke", "block"];
-      if (row.state === "rejected" || row.state === "revoked") return ["block"];
+      if (row.state === "pending" || row.state === "rejected" || row.state === "revoked") return ["block"];
       if (row.state === "blocked") return ["unblock"];
     }
     if (row.role === "admin" && (row.state === "active" || row.state === "revoked")) {
@@ -290,7 +280,7 @@ export function UsersDesk({
         <div>
           <p className="eyebrow">ACCOUNTS</p>
           <h1>Users and roles</h1>
-          <p>Who holds which role, as the game backend records it. Approve photographers and block roles here.</p>
+          <p>Who holds which role, as the game backend records it. Remove or block roles here; photographers turn photo submission on themselves.</p>
         </div>
         <div className="admin-heading-actions">
           <Button icon={<ArrowClockwise />} disabled={load === "loading" || busy} onClick={() => void reload()}>
@@ -390,7 +380,7 @@ export function UsersDesk({
                             <Button
                               key={action}
                               data-opener={`${key}|${action}`}
-                              appearance={action === "approve" ? "primary" : "secondary"}
+                              appearance="secondary"
                               disabled={busy || !!pending}
                               onClick={() => {
                                 setPending({ row, action });
@@ -473,8 +463,8 @@ export function UsersDesk({
         )}
       </section>
       <p className="users-footnote">
-        Remove takes a role away, and the account may ask again. Block stops an account asking to be a
-        photographer until someone unblocks it. An account that is an admin can&apos;t be blocked until its admin
+        Remove takes a role away, and the account can turn photo submission on again itself. Block stops an account
+        submitting photos until someone unblocks it. An account that is an admin can&apos;t be blocked until its admin
         role is removed. Admins are added with the backend&apos;s operator command, and at least one admin always
         remains.
       </p>

@@ -20,6 +20,7 @@ import type { ReactNode } from "react";
 import {
   canAddCategory,
   canAddEntry,
+  entryCount,
   faqChanges,
   faqHostKind,
   faqLimits,
@@ -40,7 +41,7 @@ import {
  * The FAQ desk (website docs/briefs/faq-cms-plan.md, "Admin"): staff edit a draft of categories and questions, one
  * operation per change, preview the answers, and publish. Josh edits on the dev Admin; the published FAQ is then
  * downloaded there and loaded into the live Admin's draft. A 409 keeps what was typed and reloads; nothing is resent.
- * The demo admin sees an empty, explained desk with every control disabled. Waits on Backend 0.33.0 for its source.
+ * The demo admin sees an empty, explained desk with every control disabled. The source is the Admin's FAQ routes (API 0.33.0).
  */
 
 type Notice = { kind: "error" | "success"; text: string } | null;
@@ -95,7 +96,7 @@ export function FaqDesk({
   readOnly,
   onBlocked,
 }: {
-  /** null until the Backend's FAQ routes are vendored (0.33.0): the desk explains and stays empty. */
+  /** null without the game backend (mock roles): the desk explains and stays empty. */
   source: FaqSource | null;
   /** The shared demo account: an explained, empty desk; nothing is read or written. */
   readOnly: boolean;
@@ -224,7 +225,10 @@ export function FaqDesk({
     const to = from + by;
     if (from < 0 || to < 0 || to >= draft.categories.length) return;
     setNotice(null);
-    void send({ op: "moveCategory", id, to }, { focus: `cat:${id}:${by < 0 ? "up" : "down"}`, announce: movedText(to + 1, draft.categories.length) });
+    void send(
+      { op: "moveCategory", id, position: to },
+      { focus: `cat:${id}:${by < 0 ? "up" : "down"}`, announce: movedText(to + 1, draft.categories.length) },
+    );
   }
   function moveEntry(categoryId: string, id: string, by: -1 | 1) {
     const category = draft?.categories.find((each) => each.id === categoryId);
@@ -234,7 +238,7 @@ export function FaqDesk({
     if (from < 0 || to < 0 || to >= category.entries.length) return;
     setNotice(null);
     void send(
-      { op: "moveEntry", categoryId, id, to },
+      { op: "moveEntry", id, categoryId, position: to },
       { focus: `entry:${id}:${by < 0 ? "up" : "down"}`, announce: movedText(to + 1, category.entries.length) },
     );
   }
@@ -298,7 +302,7 @@ export function FaqDesk({
     if (!ask || !source || !state) return;
     const opener = ask.opener;
     if (ask.kind === "removeCategory" || ask.kind === "removeEntry") {
-      const op: FaqOp = ask.kind === "removeCategory" ? { op: "removeCategory", id: ask.id } : { op: "removeEntry", categoryId: ask.categoryId, id: ask.id };
+      const op: FaqOp = ask.kind === "removeCategory" ? { op: "removeCategory", id: ask.id } : { op: "removeEntry", id: ask.id };
       const success = ask.kind === "removeCategory" ? `"${ask.title}" was removed from the draft.` : "The question was removed from the draft.";
       setAsk(null);
       // The removed item's buttons are gone: the notice takes focus either way.
@@ -361,7 +365,7 @@ export function FaqDesk({
 
   async function pickImport(file: File | undefined) {
     if (!file || !source || !state) return;
-    if (file.size > 1024 * 1024) {
+    if (file.size > 3 * 1024 * 1024) {
       focusNext.current = "notice";
       return setNotice({ kind: "error", text: "That file is too large to be an FAQ from dev." });
     }
@@ -408,8 +412,8 @@ export function FaqDesk({
   else if (!source)
     body = (
       <div className="admin-empty">
-        <b>The FAQ desk isn&apos;t connected yet</b>
-        <p>It needs the game backend&apos;s FAQ routes (API 0.33.0). Until then nothing can be read or saved here.</p>
+        <b>The FAQ desk isn&apos;t connected</b>
+        <p>The FAQ is kept on the game backend, which this Admin doesn&apos;t use (mock roles). Nothing can be read or saved here.</p>
       </div>
     );
   else if (load === "loading" && !state)
@@ -483,7 +487,7 @@ export function FaqDesk({
                     </Button>
                     <Button size="small" icon={<ArrowUp />} data-focus={`cat:${category.id}:up`} disabled={locked || ci === 0} onClick={() => moveCategory(category.id, -1)} aria-label={`Move the category ${category.title} up`} />
                     <Button size="small" icon={<ArrowDown />} data-focus={`cat:${category.id}:down`} disabled={locked || ci === shown.categories.length - 1} onClick={() => moveCategory(category.id, 1)} aria-label={`Move the category ${category.title} down`} />
-                    <Button size="small" data-focus={`cat:${category.id}:remove`} disabled={locked} onClick={() => setAsk({ kind: "removeCategory", id: category.id, title: category.title, opener: `cat:${category.id}:remove` })} aria-label={`Remove the category ${category.title}`}>
+                    <Button size="small" data-focus={`cat:${category.id}:remove`} disabled={locked || category.entries.length > 0} title={category.entries.length > 0 ? "Remove or move its questions first" : undefined} onClick={() => setAsk({ kind: "removeCategory", id: category.id, title: category.title, opener: `cat:${category.id}:remove` })} aria-label={`Remove the category ${category.title}`}>
                       Remove
                     </Button>
                   </div>
@@ -717,7 +721,7 @@ export function FaqDesk({
 
       {!readOnly && source && state && (
         <div className="admin-actions faq-desk-toolbar">
-          <Button appearance="primary" data-focus="publish" disabled={locked || changes.length === 0} onClick={() => setAsk({ kind: "publish", changes, opener: "publish" })}>
+          <Button appearance="primary" data-focus="publish" disabled={locked || changes.length === 0 || entryCount(state.draft) === 0} onClick={() => setAsk({ kind: "publish", changes, opener: "publish" })}>
             Publish
           </Button>
           <Button data-focus="discard" disabled={locked || changes.length === 0} onClick={() => setAsk({ kind: "discard", changes, opener: "discard" })}>

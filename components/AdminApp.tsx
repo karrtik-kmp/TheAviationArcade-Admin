@@ -41,6 +41,7 @@ import { IdentifierDesk, type IdentifierChange } from "@/components/IdentifierDe
 import type { IdentifierItem } from "@/lib/identifier-desk";
 import { MediaDesk } from "@/components/MediaDesk";
 import { FaqDesk } from "@/components/FaqDesk";
+import { createFaqSource } from "@/lib/faq-source";
 import { StoreDesk } from "@/components/StoreDesk";
 import { UsersDesk } from "@/components/UsersDesk";
 import { ActivityDesk } from "@/components/ActivityDesk";
@@ -183,6 +184,8 @@ export function AdminApp({
       },
     }),
   );
+  // The FAQ desk's reads and writes go through the draft session, like the other desks (stale answers dropped).
+  const [faqSource] = useState(() => createFaqSource(drafts.request));
   const currentAccountMatches =
     accountSession.state === "ready" &&
     !!accountSession.account?.user &&
@@ -996,27 +999,7 @@ export function AdminApp({
                         confirmNote:
                           "Once it is published you can start a Plane of the Day draft from it or link it to an Aircraft Identifier question.",
                       }}
-                    >
-                      <section className="admin-panel review-photographers" aria-labelledby="review-photographers-title">
-                        <div>
-                          <h2 id="review-photographers-title">New photographers</h2>
-                          <p>
-                            {reviews.counts.photographers
-                              ? `${countText(reviews.counts.photographers)} waiting for approval.`
-                              : reviews.loading
-                                ? "Checking…"
-                                : "The photographer requests could not be read."}{" "}
-                            Approve them in Users so they can send photos.
-                          </p>
-                        </div>
-                        <div className="admin-actions">
-                          <Button onClick={() => setSection("Users")}>Open photographer requests</Button>
-                          <Button icon={<ArrowClockwise size={16} />} onClick={reviews.refresh}>
-                            Reload
-                          </Button>
-                        </div>
-                      </section>
-                    </MediaDesk>
+                    />
                   )}
                   {section === "Aircraft Identifier" && !readOnly && (
                     <IdentifierDesk
@@ -1087,8 +1070,8 @@ export function AdminApp({
                     <UsersDesk sessionKey={user.sessionKey} onBlocked={blockAccess} />
                   )}
                   {section === "FAQ" && (
-                    // The source arrives with Backend 0.33.0 (website docs/briefs/faq-cms-plan.md); until then the desk explains.
-                    <FaqDesk key={user.sessionKey} source={null} readOnly={readOnly} onBlocked={blockAccess} />
+                    // On the game backend (API 0.33.0); with mock roles there is no backend, so the desk explains.
+                    <FaqDesk key={user.sessionKey} source={manageRoles && !readOnly ? faqSource : null} readOnly={readOnly} onBlocked={blockAccess} />
                   )}
                   {section === "Activity" && <ActivityDesk events={events} />}
                 </>

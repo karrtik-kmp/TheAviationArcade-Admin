@@ -25,10 +25,10 @@ export type ReviewCounts = {
 };
 
 type Shown = { key: string; counts: Record<ReviewCountKey, PageCount | null>; queue: string[]; failed: ReviewCountKey[] };
-const empty: Record<ReviewCountKey, PageCount | null> = { toReview: null, changes: null, photographers: null };
+const empty: Record<ReviewCountKey, PageCount | null> = { toReview: null, changes: null };
 
 /**
- * Reads the first page of each review list for the Overview, the nav badge and the photographers panel. Only for an
+ * Reads the first page of each review list for the Overview and the nav badge. Only for an
  * admin on backend roles whose account is confirmed (`enabled`); otherwise nothing is requested. A 401, 403 or
  * ACCOUNT_CHANGED from any list is the account fence: it goes to `onBlocked` and no count is applied. Only the newest
  * load may change the screen (session generation), and what is shown is tied to the account it was read for, so
@@ -70,7 +70,7 @@ export function useReviewCounts(
     const counts = { ...empty };
     const failed: ReviewCountKey[] = [];
     for (const { key, status, body } of replies) {
-      const count = status === 200 ? countOf(body, key === "photographers" ? "requests" : "items") : null;
+      const count = status === 200 ? countOf(body, "items") : null;
       counts[key] = count;
       if (!count) failed.push(key);
     }
