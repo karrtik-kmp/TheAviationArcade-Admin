@@ -585,5 +585,6 @@ repo's code on `main` at `11a7fcf`, not copied from the SRS.
     told apart from ACCOUNT_CHANGED, 401 and 403 (those go to `blockAccess`). Use `drafts.open("faq", version)` and
     `drafts.isCurrent(generation)`.
   - Checks: typecheck, test and build, then in the browser a keyboard reorder, the 409 path and a 375 px width.
-  - With the user: Josh's role (full admin or a narrower editor role, a Backend ADR-0002 change), and whether he edits on
-    prod or on dev with a promote step. Build it admin-only until then.
+  - Ruled 2026-11-26 (website `803c8fc`): Josh gets full `admin`, so the desk stays admin-only and needs no new role. An
+    existing admin grants it in the Users desk on each host he uses.
+  - Still with the user: whether he edits on prod, or on dev with a promote step.
