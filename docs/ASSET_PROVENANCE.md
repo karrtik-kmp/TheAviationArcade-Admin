@@ -12,8 +12,9 @@ Prepared 2026-10-22 for the owner-private website review prototype. Source files
 | `public/fonts/BarlowCondensed-SemiBold.ttf` | `UI/Fonts/BarlowCondensed-SemiBold.ttf` | Headings |
 | `public/fonts/Poppins-Regular.ttf` | `UI/Fonts/Poppins-Regular.ttf` | Body text |
 | `public/fonts/Poppins-Medium.ttf` | `UI/Fonts/Poppins-Medium.ttf` | Body emphasis and controls |
+| `public/fonts/Roboto-Medium-latin.woff2` | Not from Unity: Google Fonts, Roboto v51, weight 500, Latin subset (`fonts.gstatic.com`, 2026-11-26) | The "Continue with Google" button only, per Google's sign-in branding guidelines |
 
-The original bundled `LICENSE-Jost-OFL.txt`, `OFL-BarlowCondensed.txt` and `OFL-Poppins.txt` notices are copied beside the fonts. Fonts are self-hosted; no Google Fonts request is needed.
+The original bundled `LICENSE-Jost-OFL.txt`, `OFL-BarlowCondensed.txt` and `OFL-Poppins.txt` notices are copied beside the fonts, and Roboto's `OFL-Roboto.txt` (from `google/fonts`, `ofl/roboto/OFL.txt`). Fonts are self-hosted; no Google Fonts request is needed at run time.
 
 ## Real photography
 

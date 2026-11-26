@@ -426,6 +426,38 @@
     - the audit actions gain `role_self_activate`;
     - the media upload's 429 `submission_limit` is `SUBMISSION_LIMIT` (not retryable).
   - 0.33.0: the FAQ desk is connected (see the FAQ entry under "Next").
+- 2026-11-26: Workspace laid out by the SRS's Admin areas (user's choice: status pages, shell and Overview only).
+  - `lib/srs-areas.ts` holds the SRS §4 areas, each requirement's status (from the list below, not the SRS copy), the
+    sidebar groups (Workspace, Photos, Game content, Players, Website) and seven planned pages: Gallery, Content
+    databases, Player tools, First Class Pass, Progression, Marketplace, Website content. **Keep it in step with the
+    "SRS requirements" list below.**
+  - `components/WorkspaceMap.tsx`: the grouped sidebar (planned items muted, with a dashed ring), the status page
+    (requirements, what each waits on, the desks that already cover part of the area) and the Overview's "Admin scope"
+    panel (per-area bars that open to the requirement list). Planned pages read nothing and invent no content.
+  - `AdminApp`: the section type comes from `lib/srs-areas.ts`; the top bar shows the group and the section; the
+    Overview has a new heading, Military and FAQ shortcuts, and the scope panel. Desk visibility rules are unchanged
+    (`deskVisible`). Desk internals and every write path are untouched.
+  - `admin.css`: one appended block for the shell, Overview and status pages; the shell's 9–11 px text raised to 11–15 px.
+  - Verification: typecheck clean; `npm test` 428/428 (new `tests/srs-areas.test.mjs`); `npm run build:node` complete;
+    lint unchanged (the one error is the existing `set-state-in-effect` in `fetchAll`). Walked in the browser with
+    `ROLES_SOURCE=mock` as the mock admin: Overview, scope panel, First Class Pass and Marketplace pages, dark and
+    light, 1440 and 390 (no sideways scroll). Not walked: backend roles (Submissions badge, Media, Store, Users in the
+    new nav), the view-only demo, keyboard-only use of the scope panel.
+- 2026-11-26: Sign-in page fixes (copied modules `components/AuthForm.tsx`, `components/account.css`).
+  - The Google button follows Google's branding guidelines: the standard colour "G" (inline SVG), 40 px, 14 px
+    medium, 12 px padding, 10 px gap, 4 px radius, light `#FFFFFF`/`#747775`/`#1F1F1F`, dark `#131314`/`#8E918F`/
+    `#E3E3E3`, 8% hover layer. Accessible name and `.auth-google` unchanged (the QA scripts use both).
+  - Roboto Medium is self-hosted for that button only (user's go): `public/fonts/Roboto-Medium-latin.woff2` (Google
+    Fonts v51, Latin subset, 22 KB) with `OFL-Roboto.txt`; `@font-face` in `app/globals.css`; listed in
+    `docs/ASSET_PROVENANCE.md`. Checked: loads with 200 and renders on the sign-in page; in `dist/client/fonts`.
+  - With the emulator on, a wrong email or password also says the emulator holds only the seeded test accounts (a
+    live-project account such as a real tester's email can't sign in locally).
+  - The show-password toggle is centred with auto margins; the global `button:active` translate used to replace its
+    `translateY(-50%)` and drop the icon to the bottom of the field while pressed.
+  - Verification: typecheck clean, `npm test` 428/428; in the browser (mock roles, port 5181): the new error text, the
+    button's computed values in light and dark, the toggle 0 px off centre. Google sign-in itself not walked.
+  - [ ] Website session: copy the same `AuthForm.tsx` and `account.css` changes, plus the Roboto font, its licence
+        and its `@font-face` (README "Copied common modules").
 
 ## Next
 
